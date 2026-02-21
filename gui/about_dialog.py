@@ -28,8 +28,26 @@ class AboutDialog(ctk.CTkToplevel):
         logo_bg.pack()
         logo_bg.pack_propagate(False) # Mantém tamanho fixo
         
-        # Usando pack com expand=True para centralizar melhor o emoji que pode ter bounding box instável
-        ctk.CTkLabel(logo_bg, text="🏋️", font=ctk.CTkFont(size=48)).pack(expand=True, fill="both")
+        # Tenta carregar logo personalizada, senão usa ícone padrão
+        logo_image = None
+        logo_path = getattr(master, "logo_path", None)
+        
+        if logo_path:
+            from pathlib import Path
+            from PIL import Image
+            if Path(logo_path).exists():
+                try:
+                    pil_img = Image.open(logo_path)
+                    # Redimensiona para caber no círculo (aprox 70x70 para ter margem, ou 100x100 full)
+                    logo_image = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(80, 80))
+                except Exception:
+                    pass
+
+        if logo_image:
+            ctk.CTkLabel(logo_bg, text="", image=logo_image).pack(expand=True, fill="both")
+        else:
+            # Usando pack com expand=True para centralizar melhor o emoji que pode ter bounding box instável
+            ctk.CTkLabel(logo_bg, text="🏋️", font=ctk.CTkFont(size=48)).pack(expand=True, fill="both")
         
         # Info do Sistema
         ctk.CTkLabel(

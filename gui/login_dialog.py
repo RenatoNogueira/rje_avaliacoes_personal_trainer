@@ -191,5 +191,12 @@ class LoginDialog(ctk.CTkToplevel):
         # Animação de "shake" simples ou apenas cor (opcional, por enquanto só texto)
 
     def _on_close(self):
-        self.on_cancel()
-        self.destroy()
+        try:
+            self.on_cancel()
+        except Exception:
+            pass
+            
+        try:
+            self.destroy()
+        except Exception:
+            pass

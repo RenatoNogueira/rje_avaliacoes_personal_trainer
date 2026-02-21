@@ -463,39 +463,14 @@ class Application(ctk.CTk):
         AboutDialog(self)
 
     def _apply_branding_to_sidebar(self) -> None:
+        # Removido a exibição da logo na sidebar conforme solicitado
         if not hasattr(self, "logo_label"):
             return
-        try:
-            from PIL import Image
-            path = Path(self.logo_path) if self.logo_path else None
-            if path and path.exists():
-                pil_img = Image.open(path)
-                
-                # Resize logic if needed, but CTkImage handles size via size param
-                # We want max height 60
-                max_h = 60
-                w, h = pil_img.size
-                new_w = w
-                new_h = h
-                if h > max_h:
-                    ratio = max_h / h
-                    new_w = int(w * ratio)
-                    new_h = max_h
-                
-                self._logo_image = ctk.CTkImage(
-                    light_image=pil_img,
-                    dark_image=pil_img,
-                    size=(new_w, new_h)
-                )
-                self.logo_label.configure(image=self._logo_image)
-            else:
-                self.logo_label.configure(image=None)
-                self._logo_image = None
-        except Exception:
-            try:
-                self.logo_label.configure(image=None)
-            except Exception:
-                pass
+        self.logo_label.configure(image=None)
+        self.logo_label.configure(text="")
+        self._logo_image = None
+        # Opcional: Se quiser manter o texto "RJE Avaliações" e subtítulo, não faz nada com eles.
+        # Se a intenção era remover qualquer imagem personalizada da sidebar, isso basta.
 
     def _get_current_user_id(self) -> int | None:
         if not self.current_user:

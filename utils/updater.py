@@ -30,8 +30,27 @@ class Updater:
         try:
             # 1. Obter releases do GitHub
             api_url = f"https://api.github.com/repos/{self.repo}/releases/latest"
+            
             req = urllib.request.Request(api_url)
             req.add_header("User-Agent", "RJE-Avaliacoes-Updater")
+            
+            # Autenticação para repositórios privados
+            # Tenta ler do arquivo .env ou variável de ambiente
+            github_token = os.environ.get("GITHUB_TOKEN")
+            if not github_token:
+                try:
+                    env_path = Path(".env")
+                    if env_path.exists():
+                        with env_path.open("r") as f:
+                            for line in f:
+                                if line.startswith("GITHUB_TOKEN="):
+                                    github_token = line.strip().split("=", 1)[1].strip()
+                                    break
+                except Exception:
+                    pass
+            
+            if github_token:
+                req.add_header("Authorization", f"token {github_token}")
             
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode())
@@ -50,6 +69,13 @@ class Updater:
                 if callback:
                     callback(False) # Sem atualização
                     
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                print(f"Nenhuma release encontrada no repositório {self.repo}.")
+            else:
+                print(f"Erro HTTP ao verificar atualizações: {e}")
+            if callback:
+                callback(False)
         except Exception as e:
             print(f"Erro ao verificar atualizações: {e}")
             if callback:
@@ -72,7 +98,30 @@ class Updater:
         try:
             # 1. Download
             temp_zip = Path("update.zip")
-            urllib.request.urlretrieve(self.download_url, temp_zip)
+            
+            # Adicionar headers para download também, se for asset privado
+            req = urllib.request.Request(self.download_url)
+            req.add_header("User-Agent", "RJE-Avaliacoes-Updater")
+            req.add_header("Accept", "application/octet-stream") # Importante para baixar assets de releases
+            
+            github_token = os.environ.get("GITHUB_TOKEN")
+            if not github_token:
+                 try:
+                     env_path = Path(".env")
+                     if env_path.exists():
+                         with env_path.open("r") as f:
+                             for line in f:
+                                 if line.startswith("GITHUB_TOKEN="):
+                                     github_token = line.strip().split("=", 1)[1].strip()
+                                     break
+                 except Exception:
+                     pass
+            
+            if github_token:
+                req.add_header("Authorization", f"token {github_token}")
+
+            with urllib.request.urlopen(req, timeout=30) as response, open(temp_zip, 'wb') as out_file:
+                shutil.copyfileobj(response, out_file)
             
             # 2. Extrair
             extract_dir = Path("update_temp")

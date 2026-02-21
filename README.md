@@ -73,8 +73,8 @@ O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Pytho
 
 1.  **Clone o repositório:**
     ```bash
-    git clone https://github.com/renato-jesus/rje_avaliacoes.git
-    cd rje_avaliacoes
+    git clone https://github.com/RenatoNogueira/rje_avaliacoes_personal_trainer.git
+    cd rje_avaliacoes_personal_trainer
     ```
 
 2.  **Crie um ambiente virtual (recomendado):**
