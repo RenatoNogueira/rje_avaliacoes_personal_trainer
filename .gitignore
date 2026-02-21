@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ambiente Virtual
+.venv/
+venv/
+env/
+
+# Banco de Dados e Configurações Locais
+*.db
+*.sqlite3
+data/
+settings.json
+custom_settings.json
+.env
+
+# Logs e Temporários
+*.log
+update_temp/
+update.zip
+
+# IDEs
+.vscode/
+.idea/
+
+# Distribuição
+dist/
+build/
+*.spec

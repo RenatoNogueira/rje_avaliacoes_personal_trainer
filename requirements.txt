@@ -1,0 +1,6 @@
+customtkinter
+CTkMessagebox
+Pillow
+fpdf2
+matplotlib
+requests
