@@ -181,8 +181,11 @@ class SettingsView(ctk.CTkFrame):
             btn_user_salvar = ctk.CTkButton(btn_user_frame, text="Salvar", command=self._on_user_salvar, width=80)
             btn_user_salvar.pack(side="left", padx=(0, 5))
             
-            btn_user_desativar = ctk.CTkButton(btn_user_frame, text="Desativar", command=self._on_user_desativar, fg_color="#aa3333", hover_color="#992222", width=80)
-            btn_user_desativar.pack(side="right")
+            btn_user_desativar = ctk.CTkButton(btn_user_frame, text="Desativar", command=self._on_user_desativar, fg_color="#e67e22", hover_color="#d35400", width=80)
+            btn_user_desativar.pack(side="right", padx=(5, 0))
+            
+            btn_user_excluir = ctk.CTkButton(btn_user_frame, text="Excluir", command=self._on_user_excluir, fg_color="#c0392b", hover_color="#922b21", width=80)
+            btn_user_excluir.pack(side="right")
 
             self.selected_user_id: int | None = None
             self._load_users()
@@ -388,6 +391,50 @@ class SettingsView(ctk.CTkFrame):
                 f"Erro ao desativar usuário: {exc}",
             )
             return
+        self._load_users()
+        self._on_user_novo()
+
+    def _on_user_excluir(self) -> None:
+        if self.selected_user_id is None:
+            messagebox.showwarning("Usuários", "Selecione um usuário na lista para excluir.")
+            return
+            
+        if self.current_user and self.selected_user_id == self.current_user.get("id"):
+            messagebox.showwarning(
+                "Usuários",
+                "Você não pode excluir o próprio usuário logado.",
+            )
+            return
+            
+        confirm = messagebox.askyesno(
+            "Confirmar Exclusão",
+            "ATENÇÃO: A exclusão de um usuário é permanente e pode afetar registros vinculados (alunos, treinos, etc).\n\n"
+            "Deseja realmente excluir este usuário permanentemente?"
+        )
+        if not confirm:
+            return
+
+        from database import db as _db
+        try:
+            # Opção 1: Exclusão lógica (soft delete) se integridade referencial for problema
+            # Opção 2: Exclusão física (DELETE)
+            # Como o usuário pediu "excluir", vamos tentar DELETE físico.
+            # Se houver constraints de FK, pode falhar ou precisar de cascade.
+            # Vamos assumir que se falhar, avisamos.
+            
+            _db.execute(
+                "DELETE FROM usuarios WHERE id = ?",
+                (self.selected_user_id,),
+                commit=True,
+            )
+            messagebox.showinfo("Usuários", "Usuário excluído com sucesso.")
+        except Exception as exc:
+            messagebox.showerror(
+                "Usuários",
+                f"Erro ao excluir usuário: {exc}\n\nTente desativá-lo em vez de excluir se ele possuir registros vinculados.",
+            )
+            return
+            
         self._load_users()
         self._on_user_novo()
 

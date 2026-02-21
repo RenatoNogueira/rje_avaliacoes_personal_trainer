@@ -29,6 +29,13 @@ class AvaliacoesView(ctk.CTkFrame):
         self.selected_id = None
         self.professor_nome_var = professor_var or ctk.StringVar()
         self.get_current_user = get_current_user or (lambda: None)
+        
+        # Se não foi passado professor_var externo, tenta preencher com o usuário logado
+        if self.get_current_user:
+            user = self.get_current_user()
+            if user:
+                nome_user = user.get("nome") or user.get("username") or ""
+                self.professor_nome_var.set(nome_user)
 
         # Layout Principal: 2 colunas (Lista e Detalhes)
         self.grid_columnconfigure(0, weight=1)
@@ -117,7 +124,7 @@ class AvaliacoesView(ctk.CTkFrame):
         ctk.CTkLabel(tab_id, text="Professor:").grid(
             row=0, column=0, padx=10, pady=(10, 5), sticky="e"
         )
-        self.entry_professor = ctk.CTkEntry(tab_id, textvariable=self.professor_nome_var)
+        self.entry_professor = ctk.CTkEntry(tab_id, textvariable=self.professor_nome_var, state="readonly")
         self.entry_professor.grid(row=0, column=1, padx=10, pady=(10, 5), sticky="ew")
 
         ctk.CTkLabel(tab_id, text="Aluno:").grid(
@@ -138,19 +145,24 @@ class AvaliacoesView(ctk.CTkFrame):
         self.entry_data.grid(row=3, column=1, padx=10, pady=5, sticky="ew")
         bind_mask(self.entry_data, "date")
 
-        ctk.CTkLabel(tab_ant, text="Peso (kg):").grid(
+        # Cria um container scrollable dentro da tab Antropometria
+        self.scroll_ant = ctk.CTkScrollableFrame(tab_ant)
+        self.scroll_ant.pack(fill="both", expand=True, padx=0, pady=0)
+        self.scroll_ant.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(self.scroll_ant, text="Peso (kg):").grid(
             row=0, column=0, padx=10, pady=5, sticky="e"
         )
-        self.entry_peso = ctk.CTkEntry(tab_ant)
+        self.entry_peso = ctk.CTkEntry(self.scroll_ant)
         self.entry_peso.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
 
-        ctk.CTkLabel(tab_ant, text="Altura (m):").grid(
+        ctk.CTkLabel(self.scroll_ant, text="Altura (m):").grid(
             row=1, column=0, padx=10, pady=5, sticky="e"
         )
-        self.entry_altura = ctk.CTkEntry(tab_ant)
+        self.entry_altura = ctk.CTkEntry(self.scroll_ant)
         self.entry_altura.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
 
-        imc_frame = ctk.CTkFrame(tab_ant)
+        imc_frame = ctk.CTkFrame(self.scroll_ant)
         imc_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
         imc_frame.grid_columnconfigure(3, weight=1)
         ctk.CTkLabel(imc_frame, text="% Gordura:").grid(
@@ -191,19 +203,19 @@ class AvaliacoesView(ctk.CTkFrame):
             sticky="ew",
         )
 
-        ctk.CTkLabel(tab_ant, text="Massa magra (kg):").grid(
+        ctk.CTkLabel(self.scroll_ant, text="Massa magra (kg):").grid(
             row=3, column=0, padx=10, pady=5, sticky="e"
         )
-        self.entry_massa_magra = ctk.CTkEntry(tab_ant)
+        self.entry_massa_magra = ctk.CTkEntry(self.scroll_ant)
         self.entry_massa_magra.grid(row=3, column=1, padx=10, pady=5, sticky="ew")
 
-        ctk.CTkLabel(tab_ant, text="Massa gorda (kg):").grid(
+        ctk.CTkLabel(self.scroll_ant, text="Massa gorda (kg):").grid(
             row=4, column=0, padx=10, pady=5, sticky="e"
         )
-        self.entry_massa_gorda = ctk.CTkEntry(tab_ant)
+        self.entry_massa_gorda = ctk.CTkEntry(self.scroll_ant)
         self.entry_massa_gorda.grid(row=4, column=1, padx=10, pady=5, sticky="ew")
 
-        fotos_frame = ctk.CTkFrame(tab_ant)
+        fotos_frame = ctk.CTkFrame(self.scroll_ant)
         fotos_frame.grid(row=5, column=0, columnspan=2, padx=10, pady=8, sticky="ew")
         fotos_frame.grid_columnconfigure(2, weight=1)
         ctk.CTkLabel(fotos_frame, text="Fotos:").grid(
@@ -294,16 +306,16 @@ class AvaliacoesView(ctk.CTkFrame):
         )
         btn_ver_fotos.grid(row=0, column=3, padx=4, pady=(6, 4), sticky="e")
 
-        ctk.CTkLabel(tab_ant, text="Dobras cutâneas:").grid(
+        ctk.CTkLabel(self.scroll_ant, text="Dobras cutâneas:").grid(
             row=6, column=0, padx=10, pady=5, sticky="ne"
         )
-        self.text_dobras = ctk.CTkTextbox(tab_ant, height=50)
+        self.text_dobras = ctk.CTkTextbox(self.scroll_ant, height=100)
         self.text_dobras.grid(row=6, column=1, padx=10, pady=5, sticky="nsew")
 
-        ctk.CTkLabel(tab_ant, text="Perímetros:").grid(
+        ctk.CTkLabel(self.scroll_ant, text="Perímetros:").grid(
             row=7, column=0, padx=10, pady=5, sticky="ne"
         )
-        self.text_perimetros = ctk.CTkTextbox(tab_ant, height=50)
+        self.text_perimetros = ctk.CTkTextbox(self.scroll_ant, height=100)
         self.text_perimetros.grid(row=7, column=1, padx=10, pady=5, sticky="nsew")
 
         # paths state
