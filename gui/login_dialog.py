@@ -43,6 +43,15 @@ class LoginDialog(ctk.CTkToplevel):
             try:
                 pil_img = Image.open(logo_path)
                 logo_image = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(150, 150))
+                
+                # Define ícone da janela também
+                if logo_path.lower().endswith(".ico"):
+                    self.iconbitmap(logo_path)
+                else:
+                    from PIL import ImageTk
+                    icon_photo = ImageTk.PhotoImage(pil_img)
+                    self.wm_iconphoto(False, icon_photo)
+                    self._icon_ref = icon_photo # Manter referência
             except:
                 pass
         

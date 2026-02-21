@@ -34,12 +34,20 @@ class AboutDialog(ctk.CTkToplevel):
         
         if logo_path:
             from pathlib import Path
-            from PIL import Image
+            from PIL import Image, ImageTk
             if Path(logo_path).exists():
                 try:
                     pil_img = Image.open(logo_path)
                     # Redimensiona para caber no círculo (aprox 70x70 para ter margem, ou 100x100 full)
                     logo_image = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(80, 80))
+                    
+                    # Define ícone da janela
+                    if logo_path.lower().endswith(".ico"):
+                        self.iconbitmap(logo_path)
+                    else:
+                        icon_photo = ImageTk.PhotoImage(pil_img)
+                        self.wm_iconphoto(False, icon_photo)
+                        self._icon_ref = icon_photo
                 except Exception:
                     pass
 

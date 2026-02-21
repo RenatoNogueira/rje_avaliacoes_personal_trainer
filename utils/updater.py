@@ -187,9 +187,6 @@ class Updater:
         self._restart_app()
 
     def _update_frozen(self, temp_zip):
-        # Lógica para substituir o EXE e arquivos da dist
-        # Cria um script .bat para fazer a troca e reiniciar
-        
         # Extrai para pasta temporária
         extract_dir = Path("update_temp_exe")
         if extract_dir.exists():
@@ -203,29 +200,41 @@ class Updater:
             messagebox.showerror("Erro", "Arquivo de atualização corrompido.")
             return
 
-        # Tenta achar a pasta raiz dentro do zip (se o usuário zipou a pasta dist/App)
-        # Assumindo que o zip contém os arquivos soltos ou uma pasta
+        # Lógica robusta para encontrar a pasta raiz do conteúdo
+        # Muitas vezes o zip tem uma pasta raiz (ex: RJE_Avaliacoes_v1.0.2) e dentro dela estão os arquivos
         content_dir = extract_dir
-        # Se tiver apenas uma pasta dentro, entra nela
         items = list(extract_dir.iterdir())
+        
+        # Se tiver apenas uma pasta, entra nela (comportamento padrão de zips)
         if len(items) == 1 and items[0].is_dir():
             content_dir = items[0]
+            
+            # Verifica se essa pasta contém o executável ou a pasta _internal
+            # Se não, pode ser que o zip tenha estrutura diferente.
+            # Mas vamos assumir que o usuário zipou a pasta 'RJE_Avaliacoes' da dist.
+            pass
 
-        # Script BAT para atualizar
-        # 1. Espera o app fechar
-        # 2. Copia tudo da temp para a pasta atual
-        # 3. Deleta temp
-        # 4. Inicia o app novamente
-        
         app_exe = sys.executable
-        app_dir = Path.cwd()
+        app_dir = Path.cwd() # Onde o executável atual está rodando
+        
+        # Script BAT melhorado
+        # - Usa caminhos absolutos
+        # - Espera PID (opcional, mas timeout resolve)
+        # - xcopy com flags para sobrescrever tudo
         
         bat_script = f"""
 @echo off
-timeout /t 3 /nobreak >nul
-xcopy "{content_dir.absolute()}\*" "{app_dir.absolute()}" /E /H /Y /C
+echo Aguardando fechamento do aplicativo...
+timeout /t 4 /nobreak >nul
+
+echo Atualizando arquivos...
+xcopy "{content_dir.absolute()}\\*" "{app_dir.absolute()}" /E /H /Y /C /Q
+
+echo Limpando arquivos temporarios...
 rd /s /q "{extract_dir.absolute()}"
 del "{temp_zip.absolute()}"
+
+echo Reiniciando aplicativo...
 start "" "{app_exe}"
 del "%~f0"
 """
@@ -236,7 +245,12 @@ del "%~f0"
         messagebox.showinfo("Atualização", "O sistema será fechado para aplicar a atualização.\nAguarde alguns instantes e ele reabrirá automaticamente.")
         
         # Executa o bat e fecha o app
-        os.startfile(bat_path)
+        try:
+            os.startfile(bat_path)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao iniciar script de atualização: {e}")
+            return
+            
         sys.exit(0)
 
 

@@ -428,6 +428,22 @@ class TreinosView(ctk.CTkFrame):
         self.catalog_window = ctk.CTkToplevel(self)
         self.catalog_window.title("Catálogo de exercícios")
         self.catalog_window.geometry("800x500")
+
+        # Tenta aplicar ícone personalizado
+        try:
+            main_window = self.winfo_toplevel()
+            logo_path = getattr(main_window, "logo_path", None)
+            if logo_path and Path(logo_path).exists():
+                if logo_path.lower().endswith(".ico"):
+                    self.catalog_window.iconbitmap(logo_path)
+                else:
+                    from PIL import Image, ImageTk
+                    pil_img = Image.open(logo_path)
+                    icon_photo = ImageTk.PhotoImage(pil_img)
+                    self.catalog_window.wm_iconphoto(False, icon_photo)
+                    self.catalog_window._icon_ref = icon_photo # Manter referência
+        except Exception:
+            pass
         try:
             self.catalog_window.transient(self.winfo_toplevel())
             self.catalog_window.lift()

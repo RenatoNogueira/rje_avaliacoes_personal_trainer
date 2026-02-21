@@ -335,13 +335,18 @@ class Application(ctk.CTk):
         data_dir = base_dir / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         self._settings_path = data_dir / "settings.json"
+        
+        # Define caminho da logo padrão se não houver nas configurações
+        assets_dir = base_dir / "assets"
+        assets_dir.mkdir(exist_ok=True)
+        default_logo = str(assets_dir / "logo_rje.png")
 
         defaults = {
             "professor_nome": "",
             "appearance_mode": "dark",
             "color_theme": "dark-blue",
             "marca_nome": "",
-            "logo_path": "",
+            "logo_path": default_logo,
             "contato_email": "",
             "contato_telefone": "",
             "dashboard_refresh_seconds": 60,
@@ -359,13 +364,17 @@ class Application(ctk.CTk):
         self.marca_nome_var = ctk.StringVar(value=defaults["marca_nome"])
         self.email_var = ctk.StringVar(value=defaults.get("contato_email", ""))
         self.telefone_var = ctk.StringVar(value=defaults.get("contato_telefone", ""))
-        self.logo_path = str(defaults["logo_path"] or "")
+        
+        # Garante que use a logo padrão se a config estiver vazia
+        self.logo_path = str(defaults["logo_path"] or default_logo)
+        
         self._logo_image = None
         self.appearance_mode_var = ctk.StringVar(value=defaults["appearance_mode"])
         self.color_theme_var = ctk.StringVar(value=defaults["color_theme"])
         self.dashboard_refresh_seconds_var = ctk.StringVar(
             value=str(defaults.get("dashboard_refresh_seconds", 60))
         )
+        self._apply_branding_to_sidebar()
 
     def _save_settings(self) -> None:
         data = {
@@ -483,6 +492,14 @@ class Application(ctk.CTk):
                     self.wm_iconphoto(False, photo)
                     # Mantém referência para evitar Garbage Collection
                     self._icon_photo_ref = photo
+                    
+                    # Tenta aplicar para todas as janelas filhas existentes (modais)
+                    for widget in self.winfo_children():
+                        if isinstance(widget, ctk.CTkToplevel):
+                            try:
+                                widget.wm_iconphoto(False, photo)
+                            except Exception:
+                                pass
             except Exception:
                 pass
 
@@ -530,6 +547,13 @@ class Application(ctk.CTk):
                 pass
 
         self._login_window = LoginDialog(self, on_login_success, on_cancel)
+        
+        # Tenta aplicar ícone se já estiver carregado
+        if hasattr(self, "_icon_photo_ref") and self._icon_photo_ref:
+            try:
+                self._login_window.wm_iconphoto(False, self._icon_photo_ref)
+            except Exception:
+                pass
 
     def _set_branding(self, logo_path: str, marca: str, email: str, telefone: str) -> None:
         self.logo_path = logo_path or ""
