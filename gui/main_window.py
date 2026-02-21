@@ -464,13 +464,27 @@ class Application(ctk.CTk):
 
     def _apply_branding_to_sidebar(self) -> None:
         # Removido a exibição da logo na sidebar conforme solicitado
-        if not hasattr(self, "logo_label"):
-            return
-        self.logo_label.configure(image=None)
-        self.logo_label.configure(text="")
-        self._logo_image = None
-        # Opcional: Se quiser manter o texto "RJE Avaliações" e subtítulo, não faz nada com eles.
-        # Se a intenção era remover qualquer imagem personalizada da sidebar, isso basta.
+        if hasattr(self, "logo_label"):
+            self.logo_label.configure(image=None)
+            self.logo_label.configure(text="")
+            self._logo_image = None
+        
+        # Define o ícone da janela (Title Bar) usando a logo configurada
+        if self.logo_path and Path(self.logo_path).exists():
+            try:
+                # Se for .ico usa iconbitmap
+                if self.logo_path.lower().endswith(".ico"):
+                    self.iconbitmap(self.logo_path)
+                else:
+                    # Se for imagem (png, jpg), usa iconphoto
+                    from PIL import Image, ImageTk
+                    img = Image.open(self.logo_path)
+                    photo = ImageTk.PhotoImage(img)
+                    self.wm_iconphoto(False, photo)
+                    # Mantém referência para evitar Garbage Collection
+                    self._icon_photo_ref = photo
+            except Exception:
+                pass
 
     def _get_current_user_id(self) -> int | None:
         if not self.current_user:
