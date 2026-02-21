@@ -61,8 +61,23 @@ class Updater:
             
             # 2. Comparar versões (semântica simples)
             if self._is_newer(tag_name, self.current_version):
-                # Pegar URL do zipball ou asset específico
-                self.download_url = data.get("zipball_url") # ou assets[0].browser_download_url
+                # Prioriza asset zip (binário) se estiver no modo frozen
+                download_url = None
+                
+                # Se estamos rodando como EXE, procura um asset .zip na lista de assets
+                if getattr(sys, 'frozen', False):
+                    assets = data.get("assets", [])
+                    for asset in assets:
+                        if asset.get("name", "").lower().endswith(".zip"):
+                            download_url = asset.get("url") # URL da API para download autenticado
+                            break
+                
+                # Se não achou (ou não é exe), usa o zipball do código fonte
+                if not download_url:
+                    download_url = data.get("zipball_url")
+                
+                self.download_url = download_url
+                
                 if callback:
                     callback(True) # Atualização disponível
             else:
@@ -102,7 +117,7 @@ class Updater:
             # Adicionar headers para download também, se for asset privado
             req = urllib.request.Request(self.download_url)
             req.add_header("User-Agent", "RJE-Avaliacoes-Updater")
-            req.add_header("Accept", "application/octet-stream") # Importante para baixar assets de releases
+            req.add_header("Accept", "application/octet-stream") 
             
             github_token = os.environ.get("GITHUB_TOKEN")
             if not github_token:
@@ -123,59 +138,107 @@ class Updater:
             with urllib.request.urlopen(req, timeout=30) as response, open(temp_zip, 'wb') as out_file:
                 shutil.copyfileobj(response, out_file)
             
-            # 2. Extrair
-            extract_dir = Path("update_temp")
-            if extract_dir.exists():
-                shutil.rmtree(extract_dir)
-            extract_dir.mkdir()
-            
-            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
-                
-            # O zip do GitHub geralmente cria uma pasta raiz (user-repo-hash). 
-            # Precisamos mover o conteúdo dela para a raiz do app.
-            content_dir = next(extract_dir.iterdir())
-            if not content_dir.is_dir():
-                # Fallback se não tiver subpasta
-                content_dir = extract_dir
-
-            # 3. Substituir arquivos (exceto configs e DB)
-            app_dir = Path.cwd()
-            ignored_files = {"database.db", ".env", "settings.json", "custom_settings.json", ".venv", "__pycache__", ".git"}
-            
-            for item in content_dir.iterdir():
-                if item.name in ignored_files:
-                    continue
-                    
-                dest = app_dir / item.name
-                
-                # Se for diretório, mesclar/substituir
-                if item.is_dir():
-                    if dest.exists():
-                        # shutil.copytree(item, dest, dirs_exist_ok=True) # Python 3.8+
-                        self._copy_tree_recursive(item, dest)
-                    else:
-                        shutil.copytree(item, dest)
-                else:
-                    # Arquivo
-                    try:
-                        shutil.copy2(item, dest)
-                    except PermissionError:
-                        # Arquivo em uso (ex: main.py ou dlls). 
-                        # No Windows, não dá pra substituir o executável em uso facilmente.
-                        # Para scripts Python puros, às vezes funciona se não for o arquivo principal bloqueado.
-                        print(f"Não foi possível substituir {item.name}. Arquivo em uso.")
-                        pass
-
-            # 4. Limpeza
-            temp_zip.unlink()
-            shutil.rmtree(extract_dir)
-            
-            messagebox.showinfo("Sucesso", "Atualização aplicada! O sistema será reiniciado.")
-            self._restart_app()
+            # 2. Lógica para EXE ou Código Fonte
+            if getattr(sys, 'frozen', False):
+                # Se for executável, precisa usar script externo para substituir
+                self._update_frozen(temp_zip)
+            else:
+                # Se for script Python, atualiza normalmente
+                self._update_source(temp_zip)
 
         except Exception as e:
             messagebox.showerror("Erro", f"Falha na atualização: {e}")
+
+    def _update_source(self, temp_zip):
+        # ... lógica original de extração e substituição ...
+        extract_dir = Path("update_temp")
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir)
+        extract_dir.mkdir()
+        
+        with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+            
+        content_dir = next(extract_dir.iterdir())
+        if not content_dir.is_dir():
+            content_dir = extract_dir
+
+        app_dir = Path.cwd()
+        ignored_files = {"database.db", ".env", "settings.json", "custom_settings.json", ".venv", "__pycache__", ".git", "update.zip"}
+        
+        for item in content_dir.iterdir():
+            if item.name in ignored_files:
+                continue
+            dest = app_dir / item.name
+            if item.is_dir():
+                if dest.exists():
+                    self._copy_tree_recursive(item, dest)
+                else:
+                    shutil.copytree(item, dest)
+            else:
+                try:
+                    shutil.copy2(item, dest)
+                except PermissionError:
+                    pass
+
+        temp_zip.unlink()
+        shutil.rmtree(extract_dir)
+        messagebox.showinfo("Sucesso", "Atualização aplicada! O sistema será reiniciado.")
+        self._restart_app()
+
+    def _update_frozen(self, temp_zip):
+        # Lógica para substituir o EXE e arquivos da dist
+        # Cria um script .bat para fazer a troca e reiniciar
+        
+        # Extrai para pasta temporária
+        extract_dir = Path("update_temp_exe")
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir)
+        extract_dir.mkdir()
+        
+        try:
+            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+        except zipfile.BadZipFile:
+            messagebox.showerror("Erro", "Arquivo de atualização corrompido.")
+            return
+
+        # Tenta achar a pasta raiz dentro do zip (se o usuário zipou a pasta dist/App)
+        # Assumindo que o zip contém os arquivos soltos ou uma pasta
+        content_dir = extract_dir
+        # Se tiver apenas uma pasta dentro, entra nela
+        items = list(extract_dir.iterdir())
+        if len(items) == 1 and items[0].is_dir():
+            content_dir = items[0]
+
+        # Script BAT para atualizar
+        # 1. Espera o app fechar
+        # 2. Copia tudo da temp para a pasta atual
+        # 3. Deleta temp
+        # 4. Inicia o app novamente
+        
+        app_exe = sys.executable
+        app_dir = Path.cwd()
+        
+        bat_script = f"""
+@echo off
+timeout /t 3 /nobreak >nul
+xcopy "{content_dir.absolute()}\*" "{app_dir.absolute()}" /E /H /Y /C
+rd /s /q "{extract_dir.absolute()}"
+del "{temp_zip.absolute()}"
+start "" "{app_exe}"
+del "%~f0"
+"""
+        bat_path = app_dir / "update_script.bat"
+        with open(bat_path, "w") as f:
+            f.write(bat_script)
+            
+        messagebox.showinfo("Atualização", "O sistema será fechado para aplicar a atualização.\nAguarde alguns instantes e ele reabrirá automaticamente.")
+        
+        # Executa o bat e fecha o app
+        os.startfile(bat_path)
+        sys.exit(0)
+
 
     def _copy_tree_recursive(self, src, dst):
         if not dst.exists():
