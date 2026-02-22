@@ -1,5 +1,77 @@
 import customtkinter as ctk
 import tkinter as tk
+from .theme import _c
+
+def set_window_icon(window, logo_path=None):
+    """
+    Define o ícone de uma janela de forma centralizada com caminhos robustos.
+    Prioridade: logo_path informado > icon.ico na raiz > ícone padrão.
+    """
+    import sys
+    import os
+    from pathlib import Path
+    from PIL import Image, ImageTk
+    
+    # Determina a raiz do projeto de forma robusta
+    if getattr(sys, 'frozen', False):
+        # Se estiver rodando como executável PyInstaller
+        base_dir = Path(sys._MEIPASS)
+    else:
+        # Se estiver rodando como script (.py)
+        # gui/utils.py -> gui -> raiz
+        base_dir = Path(os.path.dirname(os.path.abspath(__file__))).parent
+    
+    candidates = []
+    
+    # 1. Se foi passado um logo específico (ex: das configurações)
+    if logo_path:
+        lp = Path(logo_path)
+        if lp.exists():
+            candidates.append(str(lp))
+        elif (base_dir / lp).exists():
+            candidates.append(str(base_dir / lp))
+        
+    # 2. Busca icon.ico na raiz do projeto (caminho absoluto)
+    root_icon = base_dir / "icon.ico"
+    if root_icon.exists():
+        candidates.append(str(root_icon))
+    
+    # 3. Busca em assets/icon.ico (caminho absoluto)
+    assets_icon = base_dir / "assets" / "icon.ico"
+    if assets_icon.exists():
+        candidates.append(str(assets_icon))
+
+    for icon in candidates:
+        icon_path = str(Path(icon).absolute())
+        try:
+            # Tenta múltiplos métodos para garantir exibição no Windows
+            if icon_path.lower().endswith(".ico"):
+                try:
+                    window.iconbitmap(icon_path)
+                except:
+                    # Alternativa para iconbitmap no Windows
+                    window.attributes("-iconbitmap", icon_path)
+                
+                # Mesmo com .ico, às vezes o iconphoto ajuda na barra de tarefas
+                try:
+                    img = Image.open(icon_path)
+                    photo = ImageTk.PhotoImage(img)
+                    window.wm_iconphoto(True, photo) # True para aplicar em todos
+                    window._icon_photo_ref = photo
+                except:
+                    pass
+                return True
+            else:
+                img = Image.open(icon_path)
+                photo = ImageTk.PhotoImage(img)
+                # wm_iconphoto(True, ...) aplica recursivamente a novas janelas se master
+                window.wm_iconphoto(True, photo)
+                window._icon_photo_ref = photo
+                return True
+        except Exception as e:
+            print(f"Erro ao definir ícone ({icon_path}): {e}")
+            continue
+    return False
 
 class ToolTip(object):
     """
@@ -17,11 +89,17 @@ class ToolTip(object):
         self.tw = None
 
     def enter(self, event=None):
-        self.schedule()
+        try:
+            self.schedule()
+        except Exception:
+            pass
 
     def leave(self, event=None):
-        self.unschedule()
-        self.hidetip()
+        try:
+            self.unschedule()
+            self.hidetip()
+        except Exception:
+            pass
 
     def schedule(self):
         self.unschedule()
@@ -45,8 +123,10 @@ class ToolTip(object):
         self.tw.wm_geometry("+%d+%d" % (x, y))
         
         label = tk.Label(self.tw, text=self.text, justify='left',
-                       background="#ffffe0", relief='solid', borderwidth=1,
-                       wraplength = self.wraplength, font=("tahoma", "8", "normal"))
+                       background=_c("card_bg")[1] if ctk.get_appearance_mode() == "Dark" else _c("card_bg")[0], 
+                       foreground=_c("view_header_title")[1] if ctk.get_appearance_mode() == "Dark" else _c("view_header_title")[0],
+                       relief='solid', borderwidth=1,
+                       wraplength = self.wraplength, font=("Inter", "9"))
         label.pack(ipadx=1)
 
     def hidetip(self):
@@ -86,11 +166,11 @@ def show_toast(master, message, duration=2000):
         toast.geometry(f"{toast_w}x{toast_h}+{pos_x}+{pos_y}")
         
         # Frame e Label
-        frame = ctk.CTkFrame(toast, fg_color="#333333", corner_radius=20)
+        frame = ctk.CTkFrame(toast, fg_color=_c("view_header_icon"), corner_radius=20)
         frame.pack(fill="both", expand=True)
         
-        label = ctk.CTkLabel(frame, text=message, text_color="white", font=("Arial", 12))
-        label.pack(expand=True, fill="both")
+        label = ctk.CTkLabel(frame, text=message, text_color="white", font=ctk.CTkFont(family="Inter", size=13, weight="bold"))
+        label.pack(expand=True, fill="both", padx=20)
         
         # Fecha após duration ms
         toast.after(duration, toast.destroy)
@@ -133,7 +213,7 @@ def setup_enter_navigation(parent):
     for i, widget in enumerate(widgets[:-1]):
         next_widget = widgets[i+1]
         
-        def focus_next(event, w=next_widget):
+        def focus_next(event=None, w=next_widget):
             try:
                 w.focus_set()
             except Exception:
@@ -142,4 +222,7 @@ def setup_enter_navigation(parent):
             
         # Bind no widget interno do CTk (entry)
         # CTkEntry e ComboBox expõem bind, mas o foco real está nos componentes internos
-        widget.bind("<Return>", focus_next)
+        try:
+            widget.bind("<Return>", focus_next)
+        except Exception:
+            pass

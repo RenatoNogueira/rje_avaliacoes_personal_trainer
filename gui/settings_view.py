@@ -1,11 +1,11 @@
+import customtkinter as ctk
 import os
 import shutil
 from tkinter import filedialog, messagebox
 
-import customtkinter as ctk
-from .utils import setup_enter_navigation
-
+from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_empty_state, create_section_title, bind_card_hover
 from database import db
+from .utils import setup_enter_navigation
 from utils.image_utils import create_circular_image
 
 
@@ -31,15 +31,8 @@ class SettingsView(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
         # Header
-        header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
-
-        title = ctk.CTkLabel(
-            header_frame,
-            text="Configurações",
-            font=ctk.CTkFont(size=24, weight="bold"),
-        )
-        title.pack(side="left")
+        self.header = create_view_header(self, "⚙️", "Configurações", "Ajuste as preferências do sistema")
+        self.header.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
 
         # Tabs Container
         self.tabs = ctk.CTkTabview(self)
@@ -61,9 +54,7 @@ class SettingsView(ctk.CTkFrame):
         scroll_geral.grid_columnconfigure(1, weight=1)
 
         row = 0
-        ctk.CTkLabel(scroll_geral, text="Preferências do Sistema", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=row, column=0, columnspan=2, padx=10, pady=(10, 10), sticky="w"
-        )
+        create_section_title(scroll_geral, "Preferências do Sistema").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
         row += 1
 
         ctk.CTkLabel(scroll_geral, text="Nome do professor:").grid(row=row, column=0, padx=10, pady=5, sticky="e")
@@ -76,9 +67,7 @@ class SettingsView(ctk.CTkFrame):
         self.entry_refresh.grid(row=row, column=1, padx=10, pady=5, sticky="w")
 
         row += 1
-        ctk.CTkLabel(scroll_geral, text="Aparência", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=row, column=0, columnspan=2, padx=10, pady=(20, 10), sticky="w"
-        )
+        create_section_title(scroll_geral, "Aparência").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
         
         row += 1
         ctk.CTkLabel(scroll_geral, text="Tema:").grid(row=row, column=0, padx=10, pady=5, sticky="e")
@@ -98,21 +87,19 @@ class SettingsView(ctk.CTkFrame):
         self.combo_theme.grid(row=row, column=1, padx=10, pady=5, sticky="w")
 
         row += 1
-        ctk.CTkLabel(scroll_geral, text="Manutenção de Dados", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=row, column=0, columnspan=2, padx=10, pady=(20, 10), sticky="w"
-        )
+        create_section_title(scroll_geral, "Manutenção de Dados").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
 
         row += 1
         btn_frame = ctk.CTkFrame(scroll_geral, fg_color="transparent")
         btn_frame.grid(row=row, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
         
-        btn_backup = ctk.CTkButton(btn_frame, text="Criar Backup", command=self._on_backup, width=120)
+        btn_backup = create_action_button(btn_frame, "📦 Criar Backup", "btn_new", self._on_backup, width=150)
         btn_backup.pack(side="left", padx=(0, 10))
         
-        btn_restore = ctk.CTkButton(btn_frame, text="Restaurar Backup", command=self._on_restore, fg_color="#aa3333", hover_color="#992222", width=120)
+        btn_restore = create_action_button(btn_frame, "🔄 Restaurar Backup", "btn_delete", self._on_restore, width=150)
         btn_restore.pack(side="left", padx=(0, 10))
         
-        btn_open_folder = ctk.CTkButton(btn_frame, text="Abrir Pasta de Dados", command=self._on_open_data_folder, width=140, fg_color="gray")
+        btn_open_folder = create_action_button(btn_frame, "📂 Pasta de Dados", "btn_save", self._on_open_data_folder, width=180)
         btn_open_folder.pack(side="left", padx=(0, 10))
 
         row += 1
@@ -148,7 +135,7 @@ class SettingsView(ctk.CTkFrame):
             ctk.CTkButton(filter_frame, text="🔍", width=40, command=self._load_users).pack(side="right")
 
             # Lista (Esquerda Corpo)
-            self.scroll_users = ctk.CTkScrollableFrame(left_panel)
+            self.scroll_users = ctk.CTkScrollableFrame(left_panel, fg_color=_c("panel_bg"), corner_radius=0)
             self.scroll_users.grid(row=1, column=0, padx=0, pady=0, sticky="nsew")
 
             # Form (Direita)
@@ -156,9 +143,7 @@ class SettingsView(ctk.CTkFrame):
             form_user.grid(row=0, column=1, rowspan=2, padx=(10, 0), pady=0, sticky="nsew")
             form_user.grid_columnconfigure(1, weight=1)
 
-            ctk.CTkLabel(form_user, text="Dados do Usuário", font=ctk.CTkFont(size=16, weight="bold")).grid(
-                row=0, column=0, columnspan=2, padx=10, pady=(15, 10), sticky="w"
-            )
+            create_section_title(form_user, "Dados do Usuário").grid(row=0, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
 
             ctk.CTkLabel(form_user, text="Usuário:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
             self.entry_user_username = ctk.CTkEntry(form_user)
@@ -192,17 +177,12 @@ class SettingsView(ctk.CTkFrame):
             btn_user_frame = ctk.CTkFrame(form_user, fg_color="transparent")
             btn_user_frame.grid(row=8, column=0, columnspan=2, padx=10, pady=20, sticky="ew")
             
-            btn_user_novo = ctk.CTkButton(btn_user_frame, text="+ Novo", command=self._on_user_novo, width=80, fg_color="#2ecc71", hover_color="#27ae60")
-            btn_user_novo.pack(side="left", padx=(0, 5))
+            create_action_button(btn_user_frame, "+ Novo", "btn_new", self._on_user_novo, width=90).pack(side="left", padx=(0, 5))
+            create_action_button(btn_user_frame, "💾 Salvar", "btn_save", self._on_user_salvar, width=90).pack(side="left", padx=(0, 5))
             
-            btn_user_salvar = ctk.CTkButton(btn_user_frame, text="Salvar", command=self._on_user_salvar, width=80)
-            btn_user_salvar.pack(side="left", padx=(0, 5))
-            
-            btn_user_desativar = ctk.CTkButton(btn_user_frame, text="Desativar", command=self._on_user_desativar, fg_color="#e67e22", hover_color="#d35400", width=80)
-            btn_user_desativar.pack(side="right", padx=(5, 0))
-            
-            btn_user_excluir = ctk.CTkButton(btn_user_frame, text="Excluir", command=self._on_user_excluir, fg_color="#c0392b", hover_color="#922b21", width=80)
-            btn_user_excluir.pack(side="right")
+            # Botões de perigo na direita
+            create_action_button(btn_user_frame, "🗑️ Excluir", "btn_delete", self._on_user_excluir, width=90).pack(side="right")
+            create_action_button(btn_user_frame, "🚫 Desativar", "btn_pdf", self._on_user_desativar, width=100).pack(side="right", padx=(0, 5))
 
             self.selected_user_id: int | None = None
             self._load_users()
@@ -241,82 +221,82 @@ class SettingsView(ctk.CTkFrame):
             rows = db.fetch_all(query, tuple(params))
             
             if not rows:
-                ctk.CTkLabel(self.scroll_users, text="Nenhum usuário.", text_color="gray").pack(pady=10)
+                create_empty_state(self.scroll_users, "👤", "Nenhum usuário encontrado").pack(pady=40)
                 return
 
             for row in rows:
                 self._create_user_card(row)
 
-    def _create_user_card(self, row: dict) -> None:
-        card = ctk.CTkFrame(self.scroll_users, fg_color=("gray90", "gray20"), corner_radius=6)
-        card.pack(fill="x", pady=2, padx=2)
+    def _create_user_card(self, row_obj: sqlite3.Row) -> None:
+        row = dict(row_obj)
+        bg = _c("list_card_bg")
+        hover = _c("list_card_hover")
         
+        card = ctk.CTkFrame(self.scroll_users, fg_color=bg, corner_radius=12)
+        card.pack(fill="x", pady=4, padx=5)
+        
+        # Accent bar lateral
+        accent = ctk.CTkFrame(card, width=4, fg_color=_c("list_card_accent"), corner_radius=2)
+        accent.pack(side="left", fill="y", padx=(10, 0), pady=10)
+
         # Frame interno para layout horizontal (Foto + Info)
         content = ctk.CTkFrame(card, fg_color="transparent")
-        content.pack(fill="both", padx=5, pady=5)
+        content.pack(fill="both", padx=10, pady=10)
         
         # Foto
         foto_path = row["foto_perfil"]
-        lbl_foto = ctk.CTkLabel(content, text="👤", width=36, height=36, fg_color="gray50", corner_radius=18)
+        lbl_foto = ctk.CTkLabel(content, text="👤", width=40, height=40, fg_color="gray50", corner_radius=20)
         if foto_path:
             try:
                 from pathlib import Path
                 if Path(foto_path).exists():
-                    pil_img = create_circular_image(foto_path, (72, 72)) # Dobro para HiDPI
+                    pil_img = create_circular_image(foto_path, (80, 80))
                     if pil_img:
-                        ctk_img = ctk.CTkImage(pil_img, size=(36, 36))
+                        ctk_img = ctk.CTkImage(pil_img, size=(40, 40))
                         lbl_foto.configure(image=ctk_img, text="", fg_color="transparent")
-            except Exception:
-                pass
-        lbl_foto.pack(side="left", padx=(0, 8))
+            except Exception: pass
+        lbl_foto.pack(side="left", padx=(0, 10))
 
         # Info Wrapper
         info_wrapper = ctk.CTkFrame(content, fg_color="transparent")
         info_wrapper.pack(side="left", fill="both", expand=True)
 
         status_color = "green" if row["ativo"] else "red"
-        status_text = "Personal" if row["ativo"] else "Inativo"
+        status_text = "Ativo" if row["ativo"] else "Inativo"
         
         role_parts = []
-        if row["is_admin"]:
-            role_parts.append("ADMIN")
-        else:
-            role_parts.append("USER")
-            
-        if row["is_trial"]:
-            role_parts.append("TRIAL")
-            
+        if row["is_admin"]: role_parts.append("ADMIN")
+        else: role_parts.append("PERSONAL")
+        if row["is_trial"]: role_parts.append("TRIAL")
         role_text = " | ".join(role_parts)
         
         header = ctk.CTkFrame(info_wrapper, fg_color="transparent")
-        header.pack(fill="x", pady=(0, 0))
+        header.pack(fill="x")
         
-        lbl_user = ctk.CTkLabel(header, text=row["username"], font=ctk.CTkFont(size=13, weight="bold"))
+        lbl_user = ctk.CTkLabel(header, text=row["username"], font=ctk.CTkFont(size=14, weight="bold"))
         lbl_user.pack(side="left")
         
-        lbl_role = ctk.CTkLabel(header, text=role_text, font=ctk.CTkFont(size=10, weight="bold"), text_color="gray")
+        lbl_role = ctk.CTkLabel(header, text=role_text, font=font_small(), text_color="gray")
         lbl_role.pack(side="right")
         
-        lbl_nome = ctk.CTkLabel(info_wrapper, text=row["nome"] or "-", font=ctk.CTkFont(size=12))
-        lbl_nome.pack(fill="x", anchor="w")
+        lbl_nome = ctk.CTkLabel(info_wrapper, text=row["nome"] or "-", font=font_small(), text_color=_c("view_header_subtitle"), anchor="w")
+        lbl_nome.pack(fill="x")
         
         footer = ctk.CTkFrame(info_wrapper, fg_color="transparent")
         footer.pack(fill="x", pady=(2, 0))
         
-        lbl_status = ctk.CTkLabel(footer, text=status_text, font=ctk.CTkFont(size=11), text_color=status_color)
+        lbl_status = ctk.CTkLabel(footer, text=status_text, font=font_small(), text_color=status_color)
         lbl_status.pack(side="left")
         
-        if row["telefone"]:
-             ctk.CTkLabel(footer, text=f" | Tel: {row['telefone']}", font=ctk.CTkFont(size=11), text_color="gray").pack(side="left")
-        
-        if row["cref"]:
-            ctk.CTkLabel(footer, text=f"CREF: {row['cref']}", font=ctk.CTkFont(size=11), text_color="gray").pack(side="right")
+        cref = row.get("cref")
+        if cref:
+            ctk.CTkLabel(footer, text=f" | CREF: {cref}", font=font_small(), text_color="gray").pack(side="left")
 
         # Bind events
         for w in (card, content, lbl_foto, info_wrapper, header, lbl_user, lbl_nome, footer, lbl_status, lbl_role):
             w.bind("<Button-1>", lambda e, uid=row["id"]: self._on_user_card_click(uid))
-            w.bind("<Enter>", lambda e, c=card: c.configure(border_width=1, border_color="gray50"))
-            w.bind("<Leave>", lambda e, c=card: c.configure(border_width=0))
+            
+        bind_card_hover(card, bg, hover)
 
     def _on_user_card_click(self, user_id: int) -> None:
         self.selected_user_id = user_id

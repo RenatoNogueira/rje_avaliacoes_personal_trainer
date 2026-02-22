@@ -14,7 +14,11 @@ if (Test-Path "dist") {
 
 # 2. Executar PyInstaller
 Write-Host "Executando PyInstaller..." -ForegroundColor Yellow
-pyinstaller --noconfirm --clean rje_avaliacoes.spec
+$pyinstaller = ".\.venv\Scripts\pyinstaller.exe"
+if (-not (Test-Path $pyinstaller)) {
+    $pyinstaller = "pyinstaller" # Fallback para o global
+}
+& $pyinstaller --noconfirm --clean rje_avaliacoes.spec
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Falha no PyInstaller."

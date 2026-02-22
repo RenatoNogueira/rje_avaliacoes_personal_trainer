@@ -1,13 +1,14 @@
 import customtkinter as ctk
-import webbrowser
+from .theme import _c, font_title, font_subtitle, font_body, create_info_badge, create_action_button
+from .utils import set_window_icon
 from utils.updater import Updater
 
 class AboutDialog(ctk.CTkToplevel):
     def __init__(self, master):
         super().__init__(master)
         
-        self.title("Sobre")
-        self.geometry("420x520")
+        self.title("Sobre o RJE Avaliações")
+        self.geometry("450x560")
         self.resizable(False, False)
         
         # Configuração da Janela Modal
@@ -15,126 +16,114 @@ class AboutDialog(ctk.CTkToplevel):
         self.grab_set()
         self.focus_force()
         
-        # Container Principal (Card)
-        self.main_frame = ctk.CTkFrame(self, corner_radius=15, fg_color=("white", "#2b2b2b"))
-        self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Container Principal (Fundo Suave)
+        self.configure(fg_color=_c("panel_bg"))
         
-        # Logo Area (Topo)
+        # Card Central
+        self.main_frame = ctk.CTkFrame(self, corner_radius=20, fg_color=_c("login_card_bg"))
+        self.main_frame.pack(fill="both", expand=True, padx=25, pady=25)
+        
+        # Logo Hero Area
         self.logo_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.logo_frame.pack(pady=(30, 10))
+        self.logo_frame.pack(pady=(35, 10))
         
-        # Círculo de fundo para o ícone
-        logo_bg = ctk.CTkFrame(self.logo_frame, width=100, height=100, corner_radius=50, fg_color=("gray90", "gray20"))
+        # Círculo de fundo com borda sutil
+        logo_bg = ctk.CTkFrame(
+            self.logo_frame, width=110, height=110, corner_radius=55, 
+            fg_color=_c("view_header_icon_bg")
+        )
         logo_bg.pack()
-        logo_bg.pack_propagate(False) # Mantém tamanho fixo
+        logo_bg.pack_propagate(False)
         
-        # Tenta carregar logo personalizada, senão usa ícone padrão
         logo_image = None
         logo_path = getattr(master, "logo_path", None)
+        set_window_icon(self, logo_path)
         
         if logo_path:
             from pathlib import Path
-            from PIL import Image, ImageTk
+            from PIL import Image
             if Path(logo_path).exists():
                 try:
                     pil_img = Image.open(logo_path)
-                    # Redimensiona para caber no círculo (aprox 70x70 para ter margem, ou 100x100 full)
-                    logo_image = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(80, 80))
-                    
-                    # Define ícone da janela
-                    if logo_path.lower().endswith(".ico"):
-                        self.iconbitmap(logo_path)
-                    else:
-                        icon_photo = ImageTk.PhotoImage(pil_img)
-                        self.wm_iconphoto(False, icon_photo)
-                        self._icon_ref = icon_photo
+                    logo_image = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(85, 85))
                 except Exception:
                     pass
 
         if logo_image:
-            ctk.CTkLabel(logo_bg, text="", image=logo_image).pack(expand=True, fill="both")
+            ctk.CTkLabel(logo_bg, text="", image=logo_image).pack(expand=True)
         else:
-            # Usando pack com expand=True para centralizar melhor o emoji que pode ter bounding box instável
-            ctk.CTkLabel(logo_bg, text="🏋️", font=ctk.CTkFont(size=48)).pack(expand=True, fill="both")
+            ctk.CTkLabel(logo_bg, text="🏋️", font=ctk.CTkFont(size=54)).pack(expand=True)
         
-        # Info do Sistema
+        # Títulos
         ctk.CTkLabel(
             self.main_frame, 
             text="RJE Avaliações", 
-            font=ctk.CTkFont(family="Roboto", size=24, weight="bold")
-        ).pack(pady=(10, 5))
+            font=ctk.CTkFont(family="Inter", size=28, weight="bold"),
+            text_color=_c("view_header_title")
+        ).pack(pady=(12, 4))
         
-        ctk.CTkLabel(
-            self.main_frame, 
-            text=f"Versão {Updater(self).current_version}", 
-            font=ctk.CTkFont(size=12),
-            text_color="gray"
-        ).pack(pady=(0, 5))
+        # Badge de Versão
+        ver_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        ver_frame.pack(pady=(0, 15))
+        
+        self.version_badge = create_info_badge(ver_frame, f"Versão {Updater(self).current_version}")
+        self.version_badge.pack()
 
-        # Botão de Atualização
-        self.btn_update = ctk.CTkButton(
-            self.main_frame,
-            text="Verificar Atualizações",
-            command=self.check_updates,
-            height=28,
-            width=160,
-            fg_color="transparent",
-            border_width=1,
-            border_color="gray",
-            text_color=("gray10", "gray90"),
-            hover_color=("gray90", "gray30")
-        )
-        self.btn_update.pack(pady=(0, 15))
-
-        # Descrição com borda ou fundo sutil
-        self.desc_frame = ctk.CTkFrame(self.main_frame, fg_color=("gray95", "#1f1f1f"), corner_radius=10)
+        # Descrição em um "inset card"
+        self.desc_frame = ctk.CTkFrame(self.main_frame, fg_color=_c("section_bg"), corner_radius=12)
         self.desc_frame.pack(padx=30, pady=(0, 20), fill="x")
         
         ctk.CTkLabel(
             self.desc_frame, 
-            text="Sistema completo para gestão de\nPersonal Trainers. Controle de alunos,\navaliações físicas, treinos e agenda.", 
-            font=ctk.CTkFont(size=13),
+            text="Plataforma de alta performance para\nprofissionais de educação física.\nGestão de alunos, protocolos e resultados.", 
+            font=font_subtitle(),
             justify="center",
-            text_color=("gray30", "gray80")
-        ).pack(padx=10, pady=15)
+            text_color=_c("view_header_subtitle")
+        ).pack(padx=15, pady=18)
 
-        # Links / Contato
-        self.contact_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.contact_frame.pack(pady=(0, 20))
-        
-        ctk.CTkLabel(self.contact_frame, text="Desenvolvido por:", font=ctk.CTkFont(size=11, weight="bold")).pack()
-        
-        link_label = ctk.CTkLabel(
-            self.contact_frame, 
-            text="RJE Tecnologia", 
-            font=ctk.CTkFont(size=12, underline=True),
-            text_color=("#3498db", "#5dade2"),
-            cursor="hand2"
+        # Botão de Atualização Estilizado
+        self.btn_update = create_action_button(
+            self.main_frame,
+            text="Verificar Atualizações",
+            color_key="btn_save",
+            command=self.check_updates,
+            width=200
         )
-        link_label.pack()
-        # link_label.bind("<Button-1>", lambda e: webbrowser.open("https://www.google.com")) 
+        self.btn_update.pack(pady=(0, 25))
+
+        # Footer / Créditos
+        footer_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        footer_frame.pack(side="bottom", fill="x", pady=(0, 20))
         
-        # Footer (Copyright)
         ctk.CTkLabel(
-            self.main_frame, 
-            text="© 2026 Todos os direitos reservados.", 
-            font=ctk.CTkFont(size=11),
-            text_color="gray"
-        ).pack(side="bottom", pady=(0, 20))
+            footer_frame, 
+            text="© 2026 RJE Tecnologia", 
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=_c("view_header_subtitle")
+        ).pack()
         
-        # Botão Fechar discreto
-        ctk.CTkButton(
+        ctk.CTkLabel(
+            footer_frame, 
+            text="Todos os direitos reservados.", 
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        ).pack()
+        
+        # Botão Fechar
+        self.btn_close = ctk.CTkButton(
             self.main_frame,
             text="Fechar",
-            width=100,
-            height=30,
+            width=90,
+            height=28,
             fg_color="transparent",
             border_width=1,
-            border_color=("gray70", "gray40"),
-            text_color=("gray10", "gray90"),
-            hover_color=("gray90", "gray30"),
+            border_color=_c("card_border"),
+            text_color=_c("view_header_title"),
+            hover_color=_c("card_hover"),
             command=self.destroy
-        ).pack(side="bottom", pady=(0, 15))
+        )
+        self.btn_close.pack(side="bottom", pady=(0, 15))
+
 
     def check_updates(self):
         self.btn_update.configure(state="disabled", text="Verificando...")
@@ -147,7 +136,7 @@ class AboutDialog(ctk.CTkToplevel):
         self.after(0, lambda: self._update_ui_after_check(has_update))
 
     def _update_ui_after_check(self, has_update):
-        if has_update:
+        if has_update is True:
             self.btn_update.configure(
                 state="normal", 
                 text=f"Atualizar para {self.updater.latest_version}",
@@ -157,11 +146,21 @@ class AboutDialog(ctk.CTkToplevel):
                 border_width=0,
                 command=self.updater.perform_update
             )
-        else:
+        elif has_update is False:
             self.btn_update.configure(
                 state="disabled", 
                 text="Sistema Atualizado", 
                 fg_color="transparent",
                 border_color="green",
                 text_color="green"
+            )
+        else:
+            # Caso de erro (has_update pode ser None se o callback falhar ou retornar erro)
+            self.btn_update.configure(
+                state="normal", 
+                text="Falha na verificação", 
+                fg_color="transparent",
+                border_color="#e74c3c",
+                text_color="#e74c3c",
+                command=self.check_updates
             )

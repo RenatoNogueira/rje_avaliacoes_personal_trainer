@@ -12,7 +12,8 @@ from .treinos_view import TreinosView
 from .settings_view import SettingsView
 from .login_dialog import LoginDialog
 from .about_dialog import AboutDialog
-from .utils import create_tooltip
+from .theme import _c, font_body, font_subtitle, font_title, create_view_header
+from .utils import create_tooltip, set_window_icon
 from utils.updater import Updater
 
 
@@ -23,6 +24,7 @@ class Application(ctk.CTk):
         self.withdraw()
 
         self.title("RJE Avaliações - Personal Trainer")
+        set_window_icon(self)
         
         # Maximizar janela ao iniciar
         try:
@@ -64,7 +66,7 @@ class Application(ctk.CTk):
         self.sidebar_width = 220
         self.sidebar_collapsed_width = 60
 
-        self.sidebar = ctk.CTkFrame(self, width=self.sidebar_width, corner_radius=0)
+        self.sidebar = ctk.CTkFrame(self, width=self.sidebar_width, corner_radius=0, fg_color=_c("panel_bg"))
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_rowconfigure(10, weight=1)
         self.sidebar.grid_propagate(False) # Mantém largura fixa
@@ -110,15 +112,16 @@ class Application(ctk.CTk):
         self.title_label = ctk.CTkLabel(
             self.header_frame,
             text="RJE Avaliações",
-            font=ctk.CTkFont(size=18, weight="bold"),
+            font=font_title(),
+            text_color=_c("view_header_title")
         )
         self.title_label.grid(row=2, column=0, columnspan=2, sticky="w")
 
         self.subtitle_label = ctk.CTkLabel(
             self.header_frame,
             text="Personal Trainer",
-            font=ctk.CTkFont(size=12),
-            text_color="gray",
+            font=font_body(),
+            text_color=_c("view_header_subtitle"),
         )
         self.subtitle_label.grid(row=3, column=0, columnspan=2, pady=(0, 4), sticky="w")
 
@@ -196,12 +199,12 @@ class Application(ctk.CTk):
             self.menu_frame,
             text=self.btn_map["sair"]["full"],
             fg_color="transparent",
-            text_color=("gray10", "gray90"),
-            hover_color=("gray70", "gray30"),
+            text_color=_c("view_header_title"),
+            hover_color=_c("btn_pdf_hover"),
             anchor="w",
             command=self.logout,
             height=40,
-            font=ctk.CTkFont(size=13)
+            font=ctk.CTkFont(size=13, weight="bold")
         )
         self.btn_sair.grid(row=11, column=0, padx=10, pady=20, sticky="ew")
         
@@ -287,19 +290,8 @@ class Application(ctk.CTk):
                 old_tooltip.hidetip()
             except Exception:
                 pass
-            # Remove a referência
+            # remove a referência
             del self.tooltips[btn_id]
-            
-            # IMPORTANTE: A classe ToolTip faz bind nos eventos <Enter>, <Leave>, <ButtonPress>.
-            # Se criarmos uma nova tooltip sem remover os binds da antiga, teremos múltiplos handlers.
-            # O ideal seria a classe ToolTip ter um método `destroy` que faz unbind.
-            # Como não tem, vamos forçar o unbind manual aqui para garantir limpeza.
-            try:
-                btn.unbind("<Enter>")
-                btn.unbind("<Leave>")
-                btn.unbind("<ButtonPress>")
-            except Exception:
-                pass
 
         # 2. Se houver novo texto de tooltip, cria uma nova
         if tip_text:
@@ -310,17 +302,21 @@ class Application(ctk.CTk):
             pass
 
     def _create_sidebar_button(self, parent, text: str, command) -> ctk.CTkButton:
-        return ctk.CTkButton(
+        btn = ctk.CTkButton(
             parent,
             text=text,
             command=command,
             height=40,
             anchor="w",
-            font=ctk.CTkFont(size=13),
+            font=ctk.CTkFont(family="Inter", size=13, weight="bold"),
             fg_color="transparent",
-            text_color=("gray10", "gray90"),
-            hover_color=("gray70", "gray30"),
+            text_color=_c("view_header_title"),
+            hover_color=_c("card_hover"),
         )
+        # Store initial colors for selection logic
+        btn._original_fg = "transparent"
+        btn._original_text = _c("view_header_title")
+        return btn
 
     def _create_content_area(self) -> None:
         self.content = ctk.CTkFrame(self)
@@ -417,6 +413,47 @@ class Application(ctk.CTk):
             self.current_view.destroy()
         self.current_view = view_class(self.content, **kwargs)
         self.current_view.grid(row=0, column=0, sticky="nsew")
+        self._update_sidebar_selection(view_class)
+
+    def _update_sidebar_selection(self, active_view_class) -> None:
+        # Reset all buttons
+        buttons = [
+            (self.btn_dashboard, DashboardView),
+            (self.btn_alunos, AlunosView),
+            (self.btn_agenda, AgendaView),
+            (self.btn_avaliacoes, AvaliacoesView),
+            (self.btn_treinos, TreinosView),
+            (self.btn_settings, SettingsView),
+            (self.btn_profissional, None), # Handled separately below if needed
+        ]
+        
+        # Mapping class to button
+        class_map = {
+            DashboardView: self.btn_dashboard,
+            AlunosView: self.btn_alunos,
+            AgendaView: self.btn_agenda,
+            AvaliacoesView: self.btn_avaliacoes,
+            TreinosView: self.btn_treinos,
+            SettingsView: self.btn_settings,
+        }
+        
+        # Import ProfissionalView here to avoid circular
+        from .profissional_view import ProfissionalView
+        class_map[ProfissionalView] = self.btn_profissional
+
+        for cls, btn in class_map.items():
+            if cls == active_view_class:
+                btn.configure(
+                    fg_color=_c("card_agenda_accent"), 
+                    text_color="white",
+                    hover_color=_c("btn_save_hover")
+                )
+            else:
+                btn.configure(
+                    fg_color="transparent", 
+                    text_color=_c("view_header_title"),
+                    hover_color=_c("card_hover")
+                )
 
     def show_dashboard(self) -> None:
         self._show_view(
@@ -496,29 +533,12 @@ class Application(ctk.CTk):
             self._logo_image = None
         
         # Define o ícone da janela (Title Bar) usando a logo configurada
-        if self.logo_path and Path(self.logo_path).exists():
-            try:
-                # Se for .ico usa iconbitmap
-                if self.logo_path.lower().endswith(".ico"):
-                    self.iconbitmap(self.logo_path)
-                else:
-                    # Se for imagem (png, jpg), usa iconphoto
-                    from PIL import Image, ImageTk
-                    img = Image.open(self.logo_path)
-                    photo = ImageTk.PhotoImage(img)
-                    self.wm_iconphoto(False, photo)
-                    # Mantém referência para evitar Garbage Collection
-                    self._icon_photo_ref = photo
-                    
-                    # Tenta aplicar para todas as janelas filhas existentes (modais)
-                    for widget in self.winfo_children():
-                        if isinstance(widget, ctk.CTkToplevel):
-                            try:
-                                widget.wm_iconphoto(False, photo)
-                            except Exception:
-                                pass
-            except Exception:
-                pass
+        set_window_icon(self, self.logo_path)
+        
+        # Tenta aplicar para todas as janelas filhas existentes (modais)
+        for widget in self.winfo_children():
+            if isinstance(widget, ctk.CTkToplevel):
+                set_window_icon(widget, self.logo_path)
 
     def _get_current_user_id(self) -> int | None:
         if not self.current_user:
@@ -544,6 +564,12 @@ class Application(ctk.CTk):
             
             # Recarrega configurações se necessário
             self._init_settings()
+            
+            # Sincroniza o nome do professor se ainda não estiver preenchido
+            if not self.professor_nome_var.get().strip():
+                nome_prof = user_data.get("nome") or user_data.get("username") or ""
+                self.professor_nome_var.set(nome_prof)
+
             self._apply_branding_to_sidebar()
             
             # Mostra a janela principal
@@ -565,12 +591,8 @@ class Application(ctk.CTk):
 
         self._login_window = LoginDialog(self, on_login_success, on_cancel)
         
-        # Tenta aplicar ícone se já estiver carregado
-        if hasattr(self, "_icon_photo_ref") and self._icon_photo_ref:
-            try:
-                self._login_window.wm_iconphoto(False, self._icon_photo_ref)
-            except Exception:
-                pass
+        # Tenta aplicar ícone
+        set_window_icon(self._login_window, getattr(self, "logo_path", None))
 
     def _set_branding(self, logo_path: str, marca: str, email: str, telefone: str) -> None:
         self.logo_path = logo_path or ""

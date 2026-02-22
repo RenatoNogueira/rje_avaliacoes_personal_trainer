@@ -1,12 +1,12 @@
+import customtkinter as ctk
 from pathlib import Path
 from tkinter import filedialog, messagebox
 import json
 import datetime
 
-import customtkinter as ctk
-from .utils import setup_enter_navigation, create_tooltip, show_toast
-
+from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_empty_state, create_section_title, bind_card_hover
 from database import db
+from .utils import setup_enter_navigation, show_toast, create_tooltip, set_window_icon
 from reports.treino_pdf import gerar_pdf_treino
 
 
@@ -28,15 +28,8 @@ class TreinosView(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
         # Header
-        header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
-
-        title = ctk.CTkLabel(
-            header_frame,
-            text="Montagem de Treinos",
-            font=ctk.CTkFont(size=24, weight="bold"),
-        )
-        title.pack(side="left")
+        self.header = create_view_header(self, "💪", "Montagem de Treinos", "Crie planos de treinamento personalizados")
+        self.header.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
 
         # Container Principal
         content = ctk.CTkFrame(self, fg_color="transparent")
@@ -62,11 +55,11 @@ class TreinosView(ctk.CTkFrame):
         self.combo_filtro_usuario = ctk.CTkComboBox(filter_frame, values=["Todos os profissionais"])
         self.combo_filtro_usuario.grid(row=0, column=1, padx=(5, 0), pady=5, sticky="ew")
 
-        btn_filtrar = ctk.CTkButton(filter_frame, text="Filtrar", width=80, command=self.load_treinos)
-        btn_filtrar.grid(row=0, column=2, padx=(5, 0), pady=5, sticky="e")
+        btn_filtrar = create_action_button(filter_frame, "Filtrar", "btn_save", self.load_treinos, width=90)
+        btn_filtrar.grid(row=0, column=2, padx=(5, 0), pady=10, sticky="e")
 
         # Lista (Scrollable)
-        self.scroll_list_treinos = ctk.CTkScrollableFrame(left_panel)
+        self.scroll_list_treinos = ctk.CTkScrollableFrame(left_panel, fg_color=_c("panel_bg"), corner_radius=0)
         self.scroll_list_treinos.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
         # --- Coluna da Direita: Formulário ---
@@ -79,11 +72,8 @@ class TreinosView(ctk.CTkFrame):
         form_scroll.grid(row=0, column=0, padx=0, pady=0, sticky="nsew")
         form_scroll.grid_columnconfigure(1, weight=1)
 
-        # Seção 1: Dados do Treino
         row = 0
-        ctk.CTkLabel(form_scroll, text="Dados do Treino", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=row, column=0, columnspan=2, padx=10, pady=(20, 10), sticky="w"
-        )
+        create_section_title(form_scroll, "Dados do Treino").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
         row += 1
 
         ctk.CTkLabel(form_scroll, text="Professor:").grid(row=row, column=0, padx=10, pady=5, sticky="e")
@@ -106,21 +96,22 @@ class TreinosView(ctk.CTkFrame):
         self.entry_objetivo.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
 
         row += 1
+        row += 1
+        create_section_title(form_scroll, "Histórico").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
+        row += 1
+        
         # Metadados
         meta_frame = ctk.CTkFrame(form_scroll, fg_color="transparent")
-        meta_frame.grid(row=row, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
+        meta_frame.grid(row=row, column=0, columnspan=2, padx=10, pady=(5, 20), sticky="ew")
         meta_frame.grid_columnconfigure(0, weight=1)
         meta_frame.grid_columnconfigure(1, weight=1)
-        self.label_criado_por = ctk.CTkLabel(meta_frame, text="Criado por: -", font=ctk.CTkFont(size=11), text_color="gray")
+        self.label_criado_por = ctk.CTkLabel(meta_frame, text="Criado por: -", font=font_small(), text_color="gray")
         self.label_criado_por.grid(row=0, column=0, sticky="w")
-        self.label_atualizado_por = ctk.CTkLabel(meta_frame, text="Última atualização: -", font=ctk.CTkFont(size=11), text_color="gray")
+        self.label_atualizado_por = ctk.CTkLabel(meta_frame, text="Última atualização: -", font=font_small(), text_color="gray")
         self.label_atualizado_por.grid(row=0, column=1, sticky="e")
 
-        # Seção 2: Exercícios
         row += 1
-        ctk.CTkLabel(form_scroll, text="Exercícios", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=row, column=0, columnspan=2, padx=10, pady=(20, 10), sticky="w"
-        )
+        create_section_title(form_scroll, "Exercícios").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
         
         row += 1
         # Lista de Exercícios (Scrollable interna)
@@ -137,7 +128,7 @@ class TreinosView(ctk.CTkFrame):
         self.entry_nome_exercicio = ctk.CTkEntry(ex_form)
         self.entry_nome_exercicio.grid(row=0, column=1, columnspan=3, padx=5, pady=5, sticky="ew")
         
-        btn_catalogo = ctk.CTkButton(ex_form, text="🔍 Catálogo", width=80, command=self.on_buscar_catalogo, fg_color="#f39c12", hover_color="#d35400")
+        btn_catalogo = create_action_button(ex_form, "🔍 Catálogo", "btn_pdf", self.on_buscar_catalogo, width=100)
         btn_catalogo.grid(row=0, column=4, columnspan=2, padx=5, pady=5, sticky="w")
 
         ctk.CTkLabel(ex_form, text="Séries:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
@@ -166,65 +157,22 @@ class TreinosView(ctk.CTkFrame):
 
         # Botões de Exercício
         btn_ex_frame = ctk.CTkFrame(ex_form, fg_color="transparent")
-        btn_ex_frame.grid(row=4, column=0, columnspan=6, padx=5, pady=10, sticky="ew")
+        btn_ex_frame.grid(row=4, column=0, columnspan=6, padx=5, pady=15, sticky="ew")
         
-        btn_novo_ex = ctk.CTkButton(btn_ex_frame, text="Limpar Campos", width=100, command=self.on_novo_exercicio, fg_color="gray")
-        btn_novo_ex.pack(side="left", padx=5)
-        
-        btn_salvar_ex = ctk.CTkButton(btn_ex_frame, text="Adicionar/Atualizar Exercício", command=self.on_salvar_exercicio)
-        btn_salvar_ex.pack(side="left", padx=5, fill="x", expand=True)
-        
-        btn_del_ex = ctk.CTkButton(btn_ex_frame, text="Remover", width=100, command=self.on_excluir_exercicio, fg_color="#e74c3c", hover_color="#c0392b")
-        btn_del_ex.pack(side="right", padx=5)
+        create_action_button(btn_ex_frame, "Limpar", "btn_new", self.on_novo_exercicio, width=90).pack(side="left", padx=5)
+        create_action_button(btn_ex_frame, "Adicionar/Atualizar Exercício", "btn_save", self.on_salvar_exercicio).pack(side="left", padx=5, fill="x", expand=True)
+        create_action_button(btn_ex_frame, "Remover", "btn_delete", self.on_excluir_exercicio, width=90).pack(side="right", padx=5)
 
         setup_enter_navigation(form_scroll)
 
         # Botões de Ação (Footer)
         actions_frame = ctk.CTkFrame(right_panel, fg_color="transparent")
-        actions_frame.grid(row=1, column=0, padx=15, pady=15, sticky="ew")
-        actions_frame.grid_columnconfigure(0, weight=1)
-
-        btn_novo_treino = ctk.CTkButton(
-            actions_frame,
-            text="+ Novo Treino",
-            command=self.on_novo_treino,
-            fg_color="#2ecc71",
-            hover_color="#27ae60",
-            width=80
-        )
-        btn_novo_treino.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_novo_treino, "Criar uma nova ficha de treino")
-
-        btn_salvar_treino = ctk.CTkButton(
-            actions_frame,
-            text="💾 Salvar",
-            command=self.on_salvar_treino,
-            width=80
-        )
-        btn_salvar_treino.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_salvar_treino, "Salvar treino atual")
-
-        btn_pdf = ctk.CTkButton(
-            actions_frame,
-            text="📄 PDF",
-            command=self.on_gerar_pdf,
-            fg_color="#3498db",
-            hover_color="#2980b9",
-            width=80
-        )
-        btn_pdf.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_pdf, "Gerar ficha de treino em PDF")
-
-        btn_excluir_treino = ctk.CTkButton(
-            actions_frame,
-            text="🗑️ Excluir",
-            command=self.on_excluir_treino,
-            fg_color="#e74c3c",
-            hover_color="#c0392b",
-            width=80
-        )
-        btn_excluir_treino.pack(side="right")
-        create_tooltip(btn_excluir_treino, "Excluir treino permanentemente")
+        actions_frame.grid(row=1, column=0, padx=20, pady=20, sticky="ew")
+        
+        create_action_button(actions_frame, "+ Novo", "btn_new", self.on_novo_treino, width=100).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "💾 Salvar", "btn_save", self.on_salvar_treino, width=100).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "📄 PDF", "btn_pdf", self.on_gerar_pdf, width=100).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "🗑️ Excluir", "btn_delete", self.on_excluir_treino, width=100).pack(side="right")
 
         self.load_alunos()
         self._load_usuarios_filtro()
@@ -324,15 +272,22 @@ class TreinosView(ctk.CTkFrame):
         rows = db.fetch_all(query, tuple(params))
 
         if not rows:
-            ctk.CTkLabel(self.scroll_list_treinos, text="Nenhum treino encontrado.", text_color="gray").pack(pady=20)
+            create_empty_state(self.scroll_list_treinos, "💪", "Nenhum treino encontrado").pack(pady=40)
             return
 
         for row in rows:
             self._create_treino_card(row)
 
     def _create_treino_card(self, row: dict) -> None:
-        card = ctk.CTkFrame(self.scroll_list_treinos, fg_color=("gray90", "gray20"), corner_radius=8)
-        card.pack(fill="x", pady=4, padx=2)
+        bg = _c("list_card_bg")
+        hover = _c("list_card_hover")
+        
+        card = ctk.CTkFrame(self.scroll_list_treinos, fg_color=bg, corner_radius=12)
+        card.pack(fill="x", pady=2, padx=5)
+
+        # Accent bar
+        accent = ctk.CTkFrame(card, width=4, fg_color=_c("card_treinos_accent"), corner_radius=2)
+        accent.pack(side="left", fill="y", padx=(10, 0), pady=6)
 
         data_br = row["data_criacao"]
         try:
@@ -342,33 +297,34 @@ class TreinosView(ctk.CTkFrame):
         except Exception:
             pass
 
-        # Header: Nome do Treino
-        lbl_treino = ctk.CTkLabel(card, text=row["nome_do_treino"], font=ctk.CTkFont(size=14, weight="bold"))
-        lbl_treino.pack(fill="x", padx=10, pady=(8, 2), anchor="w")
+        # Conteúdo
+        content_frame = ctk.CTkFrame(card, fg_color="transparent")
+        content_frame.pack(side="left", fill="both", expand=True, padx=10, pady=6)
+        
+        # Header do card: Nome do Treino
+        header = ctk.CTkFrame(content_frame, fg_color="transparent")
+        header.pack(fill="x")
+        
+        lbl_treino = ctk.CTkLabel(header, text=row["nome_do_treino"], font=ctk.CTkFont(size=14, weight="bold"))
+        lbl_treino.pack(side="left")
+        
+        lbl_data = ctk.CTkLabel(header, text=data_br, font=font_small(), text_color=_c("view_header_subtitle"))
+        lbl_data.pack(side="right")
 
         # Subtitle: Aluno
-        lbl_aluno = ctk.CTkLabel(card, text=f"Aluno: {row['nome_aluno']}", font=ctk.CTkFont(size=12))
-        lbl_aluno.pack(fill="x", padx=10, pady=(0, 2), anchor="w")
+        lbl_aluno = ctk.CTkLabel(content_frame, text=f"👤 {row['nome_aluno']}", font=font_subtitle(), anchor="w")
+        lbl_aluno.pack(fill="x", pady=(2, 0))
 
-        # Footer: Data e Prof
-        footer = ctk.CTkFrame(card, fg_color="transparent")
-        footer.pack(fill="x", padx=10, pady=(0, 8))
-        
-        lbl_data = ctk.CTkLabel(footer, text=data_br, font=ctk.CTkFont(size=11), text_color="gray")
-        lbl_data.pack(side="left")
-        
+        # Profissional
         prof_nome = row["nome_criacao"] or row["username_criacao"] or ""
-        if prof_nome:
-            lbl_prof = ctk.CTkLabel(footer, text=f"Prof: {prof_nome}", font=ctk.CTkFont(size=11), text_color="gray")
-            lbl_prof.pack(side="right")
+        lbl_prof = ctk.CTkLabel(content_frame, text=f"📋 Prof: {prof_nome}", font=font_small(), text_color="gray", anchor="w")
+        lbl_prof.pack(fill="x")
 
         # Bind events
-        for w in (card, lbl_treino, lbl_aluno, footer, lbl_data):
+        for w in (card, content_frame, header, lbl_treino, lbl_data, lbl_aluno, lbl_prof):
             w.bind("<Button-1>", lambda e, tid=row["id"]: self.load_treino_details(tid))
-            w.bind("<Enter>", lambda e, c=card: c.configure(border_width=1, border_color="gray50"))
-            w.bind("<Leave>", lambda e, c=card: c.configure(border_width=0))
-        if prof_nome and 'lbl_prof' in locals():
-             lbl_prof.bind("<Button-1>", lambda e, tid=row["id"]: self.load_treino_details(tid))
+            
+        bind_card_hover(card, bg, hover)
 
     def load_treino_details(self, treino_id: int) -> None:
         self.selected_treino_id = treino_id
@@ -430,20 +386,9 @@ class TreinosView(ctk.CTkFrame):
         self.catalog_window.geometry("800x500")
 
         # Tenta aplicar ícone personalizado
-        try:
-            main_window = self.winfo_toplevel()
-            logo_path = getattr(main_window, "logo_path", None)
-            if logo_path and Path(logo_path).exists():
-                if logo_path.lower().endswith(".ico"):
-                    self.catalog_window.iconbitmap(logo_path)
-                else:
-                    from PIL import Image, ImageTk
-                    pil_img = Image.open(logo_path)
-                    icon_photo = ImageTk.PhotoImage(pil_img)
-                    self.catalog_window.wm_iconphoto(False, icon_photo)
-                    self.catalog_window._icon_ref = icon_photo # Manter referência
-        except Exception:
-            pass
+        main_window = self.winfo_toplevel()
+        logo_path = getattr(main_window, "logo_path", None)
+        set_window_icon(self.catalog_window, logo_path)
         try:
             self.catalog_window.transient(self.winfo_toplevel())
             self.catalog_window.lift()
@@ -873,9 +818,9 @@ class TreinosView(ctk.CTkFrame):
 
         # Bind click
         for w in (frame, lbl, lbl_div):
-            w.bind("<Button-1>", lambda e, eid=row["id"]: self.load_exercicio_details(eid))
-            w.bind("<Enter>", lambda e, c=frame: c.configure(fg_color=("gray90", "gray30")))
-            w.bind("<Leave>", lambda e, c=frame: c.configure(fg_color=("gray95", "gray25")))
+            w.bind("<Button-1>", lambda e=None, eid=row["id"]: self.load_exercicio_details(eid))
+            w.bind("<Enter>", lambda e=None, c=frame: c.configure(fg_color=("gray90", "gray30")))
+            w.bind("<Leave>", lambda e=None, c=frame: c.configure(fg_color=("gray95", "gray25")))
 
     def _on_delete_exercicio_row(self, exercicio_id: int) -> None:
         if not messagebox.askyesno("Confirmar", "Deseja remover este exercício?"):

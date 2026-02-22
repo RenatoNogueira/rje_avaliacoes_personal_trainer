@@ -73,6 +73,37 @@ def format_time_value(raw: str) -> str:
     return d[:2] + ":" + d[2:]
 
 
+def add_calendar_to_entry(entry: tk.Entry) -> None:
+    """Abre o seletor de data ao clicar no campo."""
+    from .calendar_dialog import CalendarDialog
+    
+    def open_cal(e):
+        # Abre apenas se não houver um seletor já aberto para este entry (evita múltiplos)
+        if hasattr(entry, "_cal_open") and entry._cal_open:
+            return
+
+        def on_select(date_str):
+            entry.delete(0, "end")
+            entry.insert(0, date_str)
+            entry._cal_open = False
+            # Dispara evento para validar/formatar se necessário
+            entry.event_generate("<KeyRelease>")
+        
+        entry._cal_open = True
+        # Encontra o master (toplevel ou root)
+        top = entry.winfo_toplevel()
+        cal = CalendarDialog(top, current_date_str=entry.get(), callback=on_select)
+        
+        def on_close():
+            entry._cal_open = False
+            cal.destroy()
+        
+        cal.protocol("WM_DELETE_WINDOW", on_close)
+
+    # Bind tanto no clique quanto no foco para facilitar
+    entry.bind("<Button-1>", open_cal, add="+")
+
+
 def bind_mask(entry: tk.Entry, kind: str) -> None:
     def on_key_release(_event):
         val = entry.get()
@@ -91,6 +122,10 @@ def bind_mask(entry: tk.Entry, kind: str) -> None:
         _apply(entry, masked)
 
     entry.bind("<KeyRelease>", on_key_release, add="+")
+    
+    # Se for tipo data, ativa o calendário automático
+    if kind == "date":
+        add_calendar_to_entry(entry)
 
 
 def is_valid_cpf(raw: str) -> bool:

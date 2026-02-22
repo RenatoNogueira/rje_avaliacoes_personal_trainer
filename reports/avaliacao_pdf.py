@@ -40,7 +40,7 @@ def gerar_pdf_avaliacao(
     pdf.set_font("Helvetica", "B", 16)
     titulo = "Avaliação Física"
     if marca_nome:
-        titulo = f"{marca_nome} – {titulo}"
+        titulo = f"{marca_nome} - {titulo}"
     pdf.cell(0, 10, titulo, ln=True)
     if contato_linha:
         pdf.set_font("Helvetica", "", 9)

@@ -3,7 +3,8 @@ from tkinter import filedialog, messagebox
 from PIL import Image
 
 import customtkinter as ctk
-from .utils import setup_enter_navigation
+from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_section_title, create_info_badge
+from .utils import setup_enter_navigation, create_tooltip
 from .input_masks import bind_mask
 from utils.image_utils import create_circular_image
 
@@ -49,11 +50,11 @@ class ProfissionalView(ctk.CTkFrame):
             self.left_panel,
             text="Visualização",
             font=ctk.CTkFont(size=18, weight="bold"),
-            text_color="gray"
+            text_color=_c("view_header_subtitle")
         ).grid(row=0, column=0, padx=20, pady=(20, 10))
 
         # Card Container
-        self.card_frame = ctk.CTkFrame(self.left_panel, fg_color=("gray90", "gray20"), corner_radius=10)
+        self.card_frame = ctk.CTkFrame(self.left_panel, fg_color=_c("card_bg"), corner_radius=15, border_width=1, border_color=_c("card_border"))
         self.card_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
         self.card_frame.grid_columnconfigure(0, weight=1)
 
@@ -100,12 +101,12 @@ class ProfissionalView(ctk.CTkFrame):
         ctk.CTkLabel(self.contact_frame, textvariable=self.telefone_var, anchor="w").grid(row=1, column=1, sticky="ew")
 
         # Reload Preview Button
-        ctk.CTkButton(
+        create_action_button(
             self.left_panel,
-            text="Atualizar Visualização",
-            command=self._update_preview,
-            fg_color="transparent",
-            border_width=1
+            "Atualizar Visualização",
+            "btn_pdf", # Using primary color
+            self._update_preview,
+            width=200
         ).grid(row=3, column=0, padx=20, pady=20)
 
 
@@ -115,12 +116,9 @@ class ProfissionalView(ctk.CTkFrame):
         self.right_panel.grid_columnconfigure(0, weight=1)
         self.right_panel.grid_rowconfigure(1, weight=1) # Scrollable area expands
 
-        title_lbl = ctk.CTkLabel(
-            self.right_panel,
-            text="Editar Informações",
-            font=ctk.CTkFont(size=22, weight="bold")
-        )
-        title_lbl.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="w")
+        # Header
+        self.header = create_view_header(self.right_panel, "👤", "Identidade Visual", "Personalize a aparência dos seus relatórios")
+        self.header.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
 
         # Scrollable Form Area
         self.scroll_form = ctk.CTkScrollableFrame(self.right_panel, fg_color="transparent")
@@ -133,6 +131,9 @@ class ProfissionalView(ctk.CTkFrame):
         self.form_container.grid_columnconfigure(1, weight=1)
 
         row = 0
+        create_section_title(self.form_container, "Perfil do Profissional").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
+
+        row += 1
         
         # Foto de Perfil
         ctk.CTkLabel(self.form_container, text="Foto de Perfil:", font=ctk.CTkFont(weight="bold")).grid(
@@ -140,8 +141,8 @@ class ProfissionalView(ctk.CTkFrame):
         )
         frame_foto = ctk.CTkFrame(self.form_container, fg_color="transparent")
         frame_foto.grid(row=row, column=1, padx=10, pady=10, sticky="w")
-        ctk.CTkButton(frame_foto, text="Selecionar", command=self.on_select_foto_perfil, width=80).pack(side="left", padx=(0, 5))
-        ctk.CTkButton(frame_foto, text="Remover", command=self.on_remove_foto_perfil, width=80, fg_color="#c0392b", hover_color="#922b21").pack(side="left")
+        create_action_button(frame_foto, "📸 Selecionar", "btn_new", self.on_select_foto_perfil, width=120).pack(side="left", padx=(0, 10))
+        create_action_button(frame_foto, "🗑️ Remover", "btn_delete", self.on_remove_foto_perfil, width=120).pack(side="left")
         
         row += 1
         self._add_form_row(row, "Nome do Profissional:", self.professor_var)
@@ -159,14 +160,11 @@ class ProfissionalView(ctk.CTkFrame):
         self.entry_telefone.grid(row=row, column=1, padx=10, pady=10, sticky="ew")
         bind_mask(self.entry_telefone, "tel")
         
-        # Logo Selection
         row += 1
-        ctk.CTkLabel(self.form_container, text="Logo (PNG):", font=ctk.CTkFont(weight="bold")).grid(
-            row=row, column=0, padx=10, pady=(20, 5), sticky="nw"
-        )
+        create_section_title(self.form_container, "Identidade da Marca").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
         
         logo_controls = ctk.CTkFrame(self.form_container, fg_color="transparent")
-        logo_controls.grid(row=row, column=1, padx=10, pady=(20, 5), sticky="ew")
+        logo_controls.grid(row=row, column=1, padx=10, pady=(10, 5), sticky="ew")
         logo_controls.grid_columnconfigure(0, weight=1)
 
         self.entry_logo = ctk.CTkEntry(logo_controls, placeholder_text="Caminho do arquivo...")
@@ -176,20 +174,22 @@ class ProfissionalView(ctk.CTkFrame):
         if current_logo:
             self.entry_logo.insert(0, current_logo)
 
-        ctk.CTkButton(
+        create_action_button(
             logo_controls, 
-            text="📁 Escolher", 
-            width=80,
-            command=self.on_escolher_logo
+            "📁 Escolher", 
+            "btn_save",
+            self.on_escolher_logo,
+            width=100
         ).grid(row=0, column=1)
 
         # Save Button Area (Footer fixo no right_panel)
-        self.btn_salvar = ctk.CTkButton(
+        self.btn_salvar = create_action_button(
             self.right_panel,
-            text="Salvar Alterações",
-            command=self.on_salvar,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold")
+            "💾 Salvar Alterações",
+            "btn_save",
+            self.on_salvar,
+            height=45,
+            width=None # Fill
         )
         self.btn_salvar.grid(row=2, column=0, padx=20, pady=20, sticky="ew")
 

@@ -6,13 +6,14 @@ import shutil
 
 import customtkinter as ctk
 from .input_masks import bind_mask, format_cpf_value, only_digits
-from .utils import setup_enter_navigation, create_tooltip, show_toast
+from .utils import setup_enter_navigation, create_tooltip, show_toast, set_window_icon
 
 try:
     from PIL import Image  # type: ignore[import]
 except Exception:  # Pillow opcional; sem ela, não há miniaturas
     Image = None  # type: ignore[assignment]
 
+from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_empty_state, create_section_title, create_info_badge, bind_card_hover
 from database import db
 from reports.avaliacao_pdf import gerar_pdf_avaliacao
 
@@ -30,27 +31,14 @@ class AvaliacoesView(ctk.CTkFrame):
         self.professor_nome_var = professor_var or ctk.StringVar()
         self.get_current_user = get_current_user or (lambda: None)
         
-        # Se não foi passado professor_var externo, tenta preencher com o usuário logado
-        if self.get_current_user:
-            user = self.get_current_user()
-            if user:
-                nome_user = user.get("nome") or user.get("username") or ""
-                self.professor_nome_var.set(nome_user)
-
+        
         # Layout Principal: 2 colunas (Lista e Detalhes)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
         # Header
-        header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
-        
-        title = ctk.CTkLabel(
-            header_frame,
-            text="Avaliações Físicas",
-            font=ctk.CTkFont(size=24, weight="bold"),
-        )
-        title.pack(side="left")
+        self.header = create_view_header(self, "📊", "Avaliações Físicas", "Acompanhe o progresso dos seus alunos")
+        self.header.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
 
         # Container Principal
         content = ctk.CTkFrame(self, fg_color="transparent")
@@ -98,7 +86,7 @@ class AvaliacoesView(ctk.CTkFrame):
         btn_filtrar.grid(row=1, column=3, padx=2, pady=2, sticky="ew")
 
         # 3. Lista de Cards (Scrollable)
-        self.scroll_list = ctk.CTkScrollableFrame(left_panel)
+        self.scroll_list = ctk.CTkScrollableFrame(left_panel, fg_color=_c("panel_bg"), corner_radius=0)
         self.scroll_list.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
         # --- Coluna da Direita: Formulário ---
@@ -428,24 +416,13 @@ class AvaliacoesView(ctk.CTkFrame):
         
         # Botões de Ação (Footer do Right Panel)
         actions_frame = ctk.CTkFrame(right_panel, fg_color="transparent")
-        actions_frame.grid(row=1, column=0, padx=15, pady=15, sticky="ew")
-        actions_frame.grid_columnconfigure(0, weight=1)
+        actions_frame.grid(row=1, column=0, padx=20, pady=20, sticky="ew")
 
-        btn_novo = ctk.CTkButton(actions_frame, text="+ Nova Avaliação", command=self.on_novo, fg_color="#2ecc71", hover_color="#27ae60")
-        btn_novo.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_novo, "Limpar formulário para nova avaliação")
+        create_action_button(actions_frame, "+ Nova", "btn_new", self.on_novo, width=90).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "💾 Salvar", "btn_save", self.on_salvar, width=90).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "📄 PDF", "btn_pdf", self.on_gerar_pdf, width=90).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "🗑️ Excluir", "btn_delete", self.on_excluir, width=90).pack(side="right")
 
-        btn_salvar = ctk.CTkButton(actions_frame, text="💾 Salvar", command=self.on_salvar)
-        btn_salvar.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_salvar, "Gravar avaliação no banco de dados")
-
-        btn_pdf = ctk.CTkButton(actions_frame, text="📄 PDF", command=self.on_gerar_pdf, fg_color="#3498db", hover_color="#2980b9")
-        btn_pdf.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_pdf, "Gerar relatório detalhado em PDF")
-        
-        btn_excluir = ctk.CTkButton(actions_frame, text="🗑️ Excluir", command=self.on_excluir, fg_color="#e74c3c", hover_color="#c0392b")
-        btn_excluir.pack(side="right")
-        create_tooltip(btn_excluir, "Excluir avaliação selecionada")
 
         self.entry_peso.bind("<KeyRelease>", self.on_imc_change)
         self.entry_altura.bind("<KeyRelease>", self.on_imc_change)
@@ -457,6 +434,7 @@ class AvaliacoesView(ctk.CTkFrame):
         self.load_alunos()
         self._load_usuarios_filtro()
         self.on_novo()
+        row = 0
         self.load_avaliacoes()
 
     def _create_mini_filter(self, parent, text, row, col):
@@ -574,6 +552,10 @@ class AvaliacoesView(ctk.CTkFrame):
         window = ctk.CTkToplevel(self)
         window.title("Fotos da avaliação")
         window.geometry("900x500")
+        
+        main_window = self.winfo_toplevel()
+        logo_path = getattr(main_window, "logo_path", None)
+        set_window_icon(window, logo_path)
         window.grab_set()
         window.grid_columnconfigure(0, weight=1)
         window.grid_rowconfigure(0, weight=1)
@@ -787,64 +769,79 @@ class AvaliacoesView(ctk.CTkFrame):
         rows = db.fetch_all(query, tuple(params))
 
         if not rows:
-            ctk.CTkLabel(self.scroll_list, text="Nenhuma avaliação encontrada.", text_color="gray").pack(pady=20)
+            create_empty_state(self.scroll_list, "📊", "Nenhuma avaliação encontrada").pack(pady=40)
             return
 
         for row in rows:
             self._create_card(row)
 
-    def _create_card(self, row: dict) -> None:
-        card = ctk.CTkFrame(self.scroll_list, fg_color=("gray90", "gray20"), corner_radius=8)
-        card.pack(fill="x", pady=4, padx=2)
+    def _create_card(self, row_obj: sqlite3.Row) -> None:
+        row = dict(row_obj)
+        bg = _c("card_aval_bg")
+        hover = _c("card_aval_hover")
+        
+        card = ctk.CTkFrame(self.scroll_list, fg_color=bg, corner_radius=12)
+        card.pack(fill="x", pady=2, padx=5)
 
-        # Dados principais
+        # Accent bar lateral
+        accent = ctk.CTkFrame(card, width=4, fg_color=_c("card_aval_accent"), corner_radius=2)
+        accent.pack(side="left", fill="y", padx=(10, 0), pady=6)
+
         data_br = row["data"]
         try:
             if row["data"]:
                 data_br = datetime.date.fromisoformat(row["data"]).strftime("%d/%m/%Y")
         except Exception:
             pass
-
-        peso = row["peso"]
-        altura = row["altura"]
-        imc = "-"
-        if peso and altura:
+            
+        peso = row.get("peso")
+        altura = row.get("altura")
+        imc_text = None
+        if peso and altura and float(altura) > 0:
             try:
                 imc_val = float(peso) / (float(altura) ** 2)
-                imc = f"{imc_val:.1f}"
-            except Exception:
-                pass
+                imc_text = f"IMC {imc_val:.1f}"
+            except: pass
 
-        prof_nome = row["nome_criacao"] or row["username_criacao"] or "N/A"
-
-        # Linha 1: Nome e Data
-        header = ctk.CTkFrame(card, fg_color="transparent")
-        header.pack(fill="x", padx=10, pady=(8, 0))
+        # Conteúdo
+        content_frame = ctk.CTkFrame(card, fg_color="transparent")
+        content_frame.pack(side="left", fill="both", expand=True, padx=10, pady=6)
+        
+        # Header do card: Nome e Data
+        header = ctk.CTkFrame(content_frame, fg_color="transparent")
+        header.pack(fill="x")
         
         lbl_nome = ctk.CTkLabel(header, text=row["nome_aluno"], font=ctk.CTkFont(size=14, weight="bold"))
         lbl_nome.pack(side="left")
         
-        lbl_data = ctk.CTkLabel(header, text=data_br, font=ctk.CTkFont(size=12), text_color="gray")
+        lbl_data = ctk.CTkLabel(header, text=data_br, font=font_small(), text_color=_c("view_header_subtitle"))
         lbl_data.pack(side="right")
 
-        # Linha 2: Métricas Resumidas
-        metrics = []
-        if peso: metrics.append(f"{peso}kg")
-        if imc != "-": metrics.append(f"IMC {imc}")
-        if row["percentual_gordura"]: metrics.append(f"{row['percentual_gordura']}% G")
+        # Métricas e Badges
+        details_row = ctk.CTkFrame(content_frame, fg_color="transparent")
+        details_row.pack(fill="x", pady=(4, 0))
         
-        lbl_metrics = ctk.CTkLabel(card, text=" | ".join(metrics), font=ctk.CTkFont(size=12))
-        lbl_metrics.pack(fill="x", padx=10, pady=(2, 0), anchor="w")
+        metrics = []
+        if peso: metrics.append(f"⚖️ {peso}kg")
+        if row.get("percentual_gordura"): metrics.append(f"🔥 {row['percentual_gordura']}% G")
+        
+        lbl_metrics = ctk.CTkLabel(details_row, text="  |  ".join(metrics), font=font_small(), text_color=_c("view_header_subtitle"))
+        lbl_metrics.pack(side="left")
 
-        # Linha 3: Profissional
-        lbl_prof = ctk.CTkLabel(card, text=f"Prof: {prof_nome}", font=ctk.CTkFont(size=11), text_color="gray")
-        lbl_prof.pack(fill="x", padx=10, pady=(2, 8), anchor="w")
+        if imc_text:
+            create_info_badge(details_row, imc_text).pack(side="right")
 
-        # Bind click events
-        for widget in (card, header, lbl_nome, lbl_data, lbl_metrics, lbl_prof):
-            widget.bind("<Button-1>", lambda e, aid=row["id"]: self.load_avaliacao_details(aid))
-            widget.bind("<Enter>", lambda e, c=card: c.configure(border_width=1, border_color="gray50"))
-            widget.bind("<Leave>", lambda e, c=card: c.configure(border_width=0))
+        # Profissional
+        prof_nome = row["nome_criacao"] or row["username_criacao"] or "N/A"
+        lbl_prof = ctk.CTkLabel(content_frame, text=f"👤 Prof: {prof_nome}", font=font_small(), text_color="gray", anchor="w")
+        lbl_prof.pack(fill="x", pady=(2, 0))
+
+        # Bind events
+        for w in (card, content_frame, header, lbl_nome, lbl_data, details_row, lbl_metrics, lbl_prof):
+            w.bind("<Button-1>", lambda e, aid=row["id"]: self.load_avaliacao_details(aid))
+            
+        bind_card_hover(card, bg, hover)
+
 
     def load_avaliacao_details(self, avaliacao_id: int) -> None:
         self.selected_id = avaliacao_id

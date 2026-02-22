@@ -6,6 +6,7 @@ import customtkinter as ctk
 from .input_masks import bind_mask, format_cpf_value, only_digits
 from .utils import setup_enter_navigation, create_tooltip, show_toast
 
+from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_empty_state, create_section_title, create_status_pill, bind_card_hover
 from database import db
 from reports.agenda_pdf import gerar_pdf_agenda
 
@@ -26,15 +27,8 @@ class AgendaView(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
         # Header
-        header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
-
-        title = ctk.CTkLabel(
-            header_frame,
-            text="Agenda",
-            font=ctk.CTkFont(size=24, weight="bold"),
-        )
-        title.pack(side="left")
+        self.header = create_view_header(self, "📅", "Agenda", "Gerencie seus horários e compromissos")
+        self.header.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
 
         # Container Principal
         content = ctk.CTkFrame(self, fg_color="transparent")
@@ -68,11 +62,11 @@ class AgendaView(ctk.CTkFrame):
         self.entry_filtro_aluno = ctk.CTkEntry(filter_frame, placeholder_text="Buscar aluno...")
         self.entry_filtro_aluno.grid(row=1, column=1, columnspan=2, padx=(0, 0), pady=5, sticky="ew")
 
-        btn_filtrar = ctk.CTkButton(filter_frame, text="Aplicar Filtros", command=self.load_agendamentos)
-        btn_filtrar.grid(row=2, column=0, columnspan=3, padx=0, pady=(5, 0), sticky="ew")
+        btn_filtrar = create_action_button(filter_frame, "Aplicar Filtros", "btn_save", self.load_agendamentos)
+        btn_filtrar.grid(row=2, column=0, columnspan=3, padx=0, pady=(10, 0), sticky="ew")
 
         # Lista (Scrollable)
-        self.scroll_list = ctk.CTkScrollableFrame(left_panel)
+        self.scroll_list = ctk.CTkScrollableFrame(left_panel, fg_color=_c("panel_bg"), corner_radius=0)
         self.scroll_list.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
         # --- Coluna da Direita: Formulário ---
@@ -86,9 +80,7 @@ class AgendaView(ctk.CTkFrame):
         form_scroll.grid_columnconfigure(1, weight=1)
 
         row = 0
-        ctk.CTkLabel(form_scroll, text="Detalhes do Agendamento", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=row, column=0, columnspan=2, padx=10, pady=(20, 10), sticky="w"
-        )
+        create_section_title(form_scroll, "Detalhes do Agendamento").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
         row += 1
 
         ctk.CTkLabel(form_scroll, text="Aluno:").grid(
@@ -128,65 +120,30 @@ class AgendaView(ctk.CTkFrame):
         self.combo_status.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
 
         row += 1
+        create_section_title(form_scroll, "Histórico").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
+        row += 1
+        
         # Metadados
         meta_frame = ctk.CTkFrame(form_scroll, fg_color="transparent")
-        meta_frame.grid(row=row, column=0, columnspan=2, padx=10, pady=20, sticky="ew")
+        meta_frame.grid(row=row, column=0, columnspan=2, padx=10, pady=(5, 20), sticky="ew")
         meta_frame.grid_columnconfigure(0, weight=1)
         meta_frame.grid_columnconfigure(1, weight=1)
 
-        self.label_criado_por = ctk.CTkLabel(meta_frame, text="Criado por: -", font=ctk.CTkFont(size=11), text_color="gray")
+        self.label_criado_por = ctk.CTkLabel(meta_frame, text="Criado por: -", font=font_small(), text_color="gray")
         self.label_criado_por.grid(row=0, column=0, sticky="w")
-        self.label_atualizado_por = ctk.CTkLabel(meta_frame, text="Última atualização: -", font=ctk.CTkFont(size=11), text_color="gray")
+        self.label_atualizado_por = ctk.CTkLabel(meta_frame, text="Última atualização: -", font=font_small(), text_color="gray")
         self.label_atualizado_por.grid(row=0, column=1, sticky="e")
 
         setup_enter_navigation(form_scroll)
 
         # Botões de Ação (Footer)
         actions_frame = ctk.CTkFrame(right_panel, fg_color="transparent")
-        actions_frame.grid(row=1, column=0, padx=15, pady=15, sticky="ew")
-        actions_frame.grid_columnconfigure(0, weight=1)
+        actions_frame.grid(row=1, column=0, padx=20, pady=20, sticky="ew")
 
-        btn_novo = ctk.CTkButton(
-            actions_frame,
-            text="+ Novo",
-            command=self.on_novo,
-            fg_color="#2ecc71",
-            hover_color="#27ae60",
-            width=80
-        )
-        btn_novo.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_novo, "Limpar campos para criar um novo agendamento")
-
-        btn_salvar = ctk.CTkButton(
-            actions_frame,
-            text="💾 Salvar",
-            command=self.on_salvar,
-            width=80
-        )
-        btn_salvar.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_salvar, "Gravar agendamento no banco de dados")
-
-        btn_pdf = ctk.CTkButton(
-            actions_frame,
-            text="📄 PDF",
-            command=self.on_gerar_pdf,
-            fg_color="#3498db",
-            hover_color="#2980b9",
-            width=80
-        )
-        btn_pdf.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_pdf, "Gerar relatório PDF dos agendamentos filtrados")
-
-        btn_excluir = ctk.CTkButton(
-            actions_frame,
-            text="🗑️ Excluir",
-            command=self.on_excluir,
-            fg_color="#e74c3c",
-            hover_color="#c0392b",
-            width=80
-        )
-        btn_excluir.pack(side="right")
-        create_tooltip(btn_excluir, "Remover agendamento selecionado permanentemente")
+        create_action_button(actions_frame, "+ Novo", "btn_new", self.on_novo, width=90).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "💾 Salvar", "btn_save", self.on_salvar, width=90).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "📄 PDF", "btn_pdf", self.on_gerar_pdf, width=90).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "🗑️ Excluir", "btn_delete", self.on_excluir, width=90).pack(side="right")
 
         self.load_alunos()
         self.set_data_hoje_filtro()
@@ -269,51 +226,67 @@ class AgendaView(ctk.CTkFrame):
         rows = db.fetch_all(query, tuple(params))
 
         if not rows:
-            ctk.CTkLabel(self.scroll_list, text="Nenhum agendamento encontrado.", text_color="gray").pack(pady=20)
+            create_empty_state(self.scroll_list, "📅", "Nenhum agendamento encontrado").pack(pady=40)
             return
 
         for row in rows:
             self._create_card(row)
 
     def _create_card(self, row: dict) -> None:
-        card = ctk.CTkFrame(self.scroll_list, fg_color=("gray90", "gray20"), corner_radius=8)
-        card.pack(fill="x", pady=4, padx=2)
+        bg = _c("ag_card_bg")
+        hover = _c("ag_card_hover")
+        is_today = row["data"] == datetime.date.today().isoformat()
+        
+        if is_today:
+            bg = _c("ag_today_bg")
+            hover = _c("ag_today_hover")
+
+        card = ctk.CTkFrame(self.scroll_list, fg_color=bg, corner_radius=12)
+        card.pack(fill="x", pady=2, padx=5)
+
+        # Accent bar lateral se for hoje
+        if is_today:
+            accent = ctk.CTkFrame(card, width=4, fg_color=_c("card_agenda_accent"), corner_radius=2)
+            accent.pack(side="left", fill="y", padx=(10, 0), pady=6)
 
         data_br = row["data"]
         try:
             if row["data"]:
-                data_br = datetime.date.fromisoformat(row["data"]).strftime("%d/%m/%Y")
+                data_br = datetime.date.fromisoformat(row["data"]).strftime("%d/%m")
         except Exception:
             pass
         
-        # Header: Hora e Data
-        header = ctk.CTkFrame(card, fg_color="transparent")
-        header.pack(fill="x", padx=10, pady=(8, 0))
+        # Conteúdo
+        content_frame = ctk.CTkFrame(card, fg_color="transparent")
+        content_frame.pack(side="left", fill="both", expand=True, padx=10, pady=6)
         
-        lbl_hora = ctk.CTkLabel(header, text=f"{data_br} - {row['horario']}", font=ctk.CTkFont(size=12, weight="bold"))
+        # Header do card: Hora e Status
+        header = ctk.CTkFrame(content_frame, fg_color="transparent")
+        header.pack(fill="x")
+        
+        lbl_hora = ctk.CTkLabel(header, text=f"🕒 {row['horario']}", font=ctk.CTkFont(size=14, weight="bold"))
         lbl_hora.pack(side="left")
         
-        status_color = "gray"
-        if row["status"] == "Concluído": status_color = "green"
-        elif row["status"] == "Cancelado": status_color = "red"
-        elif row["status"] == "Pendente": status_color = "orange"
+        create_status_pill(header, row["status"])
+
+        # Aluno e Tipo
+        lbl_aluno = ctk.CTkLabel(content_frame, text=row["nome_aluno"], font=ctk.CTkFont(size=15, weight="bold"), anchor="w")
+        lbl_aluno.pack(fill="x", pady=(4, 0))
+
+        details_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        details_frame.pack(fill="x")
         
-        lbl_status = ctk.CTkLabel(header, text=row["status"], font=ctk.CTkFont(size=11, weight="bold"), text_color=status_color)
-        lbl_status.pack(side="right")
-
-        # Aluno
-        lbl_aluno = ctk.CTkLabel(card, text=row["nome_aluno"], font=ctk.CTkFont(size=14))
-        lbl_aluno.pack(fill="x", padx=10, pady=(2, 0), anchor="w")
-
-        # Tipo
-        lbl_tipo = ctk.CTkLabel(card, text=f"Tipo: {row['tipo']}", font=ctk.CTkFont(size=12), text_color="gray")
-        lbl_tipo.pack(fill="x", padx=10, pady=(0, 8), anchor="w")
+        lbl_tipo = ctk.CTkLabel(details_frame, text=f"📂 {row['tipo']}", font=font_small(), text_color=_c("view_header_subtitle"))
+        lbl_tipo.pack(side="left")
+        
+        lbl_data = ctk.CTkLabel(details_frame, text=f"📅 {data_br}", font=font_small(), text_color=_c("view_header_subtitle"))
+        lbl_data.pack(side="right")
 
         # Bind events
-        for w in (card, header, lbl_hora, lbl_status, lbl_aluno, lbl_tipo):
+        for w in (card, content_frame, header, lbl_hora, lbl_aluno, details_frame, lbl_tipo, lbl_data):
             w.bind("<Button-1>", lambda e, aid=row["id"]: self.load_agendamento_details(aid))
-            w.bind("<Enter>", lambda e, c=card: c.configure(border_width=1, border_color="gray50"))
-            w.bind("<Leave>", lambda e, c=card: c.configure(border_width=0))
+            
+        bind_card_hover(card, bg, hover)
 
     def load_agendamento_details(self, agendamento_id: int) -> None:
         self.selected_id = agendamento_id
@@ -486,6 +459,14 @@ class AgendaView(ctk.CTkFrame):
                 "Agenda",
                 "Informe uma data no filtro para gerar o PDF da agenda.",
             )
+            return
+
+        try:
+            # Converte DD/MM/YYYY -> YYYY-MM-DD
+            d, m, y = data_filtro.split("/")
+            data_iso = f"{y}-{m}-{d}"
+        except Exception:
+            messagebox.showerror("Erro", "Formato de data inválido no filtro. Use DD/MM/YYYY")
             return
 
         filtro_like = f"%{aluno_filtro}%" if aluno_filtro else None

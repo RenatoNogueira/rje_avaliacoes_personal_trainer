@@ -9,6 +9,7 @@ from .utils import setup_enter_navigation, create_tooltip, show_toast
 from database import db
 
 
+from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_styled_card, create_action_button, create_empty_state, create_section_title, bind_card_hover, bind_click_recursive
 from utils.image_utils import create_circular_image
 
 class AlunosView(ctk.CTkFrame):
@@ -22,15 +23,8 @@ class AlunosView(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
         # Header
-        header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
-
-        title = ctk.CTkLabel(
-            header_frame,
-            text="Gestão de Alunos",
-            font=ctk.CTkFont(size=24, weight="bold"),
-        )
-        title.pack(side="left")
+        self.header = create_view_header(self, "👥", "Gestão de Alunos", "Cadastre e gerencie seus alunos")
+        self.header.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
 
         # Container Principal
         content = ctk.CTkFrame(self, fg_color="transparent")
@@ -58,7 +52,7 @@ class AlunosView(ctk.CTkFrame):
         btn_filtrar.grid(row=0, column=1, padx=(5, 0), pady=5, sticky="e")
 
         # Lista (Scrollable)
-        self.scroll_list = ctk.CTkScrollableFrame(left_panel)
+        self.scroll_list = ctk.CTkScrollableFrame(left_panel, fg_color=_c("panel_bg"), corner_radius=0)
         self.scroll_list.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="nsew")
 
         # --- Coluna da Direita: Formulário ---
@@ -72,9 +66,7 @@ class AlunosView(ctk.CTkFrame):
         form_scroll.grid_columnconfigure(1, weight=1)
 
         row = 0
-        ctk.CTkLabel(form_scroll, text="Dados Pessoais", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=row, column=0, columnspan=2, padx=10, pady=(20, 10), sticky="w"
-        )
+        create_section_title(form_scroll, "Dados Pessoais").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
         row += 1
 
         # Foto de Perfil
@@ -88,8 +80,8 @@ class AlunosView(ctk.CTkFrame):
         btn_foto_frame = ctk.CTkFrame(foto_frame, fg_color="transparent")
         btn_foto_frame.pack(side="left")
         
-        ctk.CTkButton(btn_foto_frame, text="Selecionar Foto...", command=self.on_select_foto, width=120).pack(pady=5)
-        ctk.CTkButton(btn_foto_frame, text="Remover Foto", command=self.on_remove_foto, fg_color="#c0392b", hover_color="#922b21", width=120).pack(pady=5)
+        create_action_button(btn_foto_frame, "Selecionar Foto...", "btn_save", self.on_select_foto, width=140).pack(pady=5)
+        create_action_button(btn_foto_frame, "Remover Foto", "btn_delete", self.on_remove_foto, width=140).pack(pady=5)
         
         row += 1
         
@@ -167,36 +159,11 @@ class AlunosView(ctk.CTkFrame):
 
         # Botões de Ação (Footer)
         actions_frame = ctk.CTkFrame(right_panel, fg_color="transparent")
-        actions_frame.grid(row=1, column=0, padx=15, pady=15, sticky="ew")
-        actions_frame.grid_columnconfigure(0, weight=1)
+        actions_frame.grid(row=1, column=0, padx=20, pady=20, sticky="ew")
 
-        btn_novo = ctk.CTkButton(
-            actions_frame,
-            text="+ Novo Aluno",
-            command=self.on_novo,
-            fg_color="#2ecc71",
-            hover_color="#27ae60"
-        )
-        btn_novo.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_novo, "Limpar formulário para cadastrar novo aluno")
-
-        btn_salvar = ctk.CTkButton(
-            actions_frame,
-            text="💾 Salvar",
-            command=self.on_salvar,
-        )
-        btn_salvar.pack(side="left", padx=(0, 10))
-        create_tooltip(btn_salvar, "Gravar dados do aluno")
-
-        btn_excluir = ctk.CTkButton(
-            actions_frame,
-            text="🗑️ Excluir",
-            command=self.on_excluir,
-            fg_color="#e74c3c",
-            hover_color="#c0392b",
-        )
-        btn_excluir.pack(side="right")
-        create_tooltip(btn_excluir, "Remover aluno selecionado")
+        create_action_button(actions_frame, "+ Novo Aluno", "btn_new", self.on_novo).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "💾 Salvar", "btn_save", self.on_salvar).pack(side="left", padx=(0, 10))
+        create_action_button(actions_frame, "🗑️ Excluir", "btn_delete", self.on_excluir).pack(side="right")
 
         self.load_alunos()
 
@@ -218,19 +185,26 @@ class AlunosView(ctk.CTkFrame):
         rows = db.fetch_all(query, tuple(params))
 
         if not rows:
-            ctk.CTkLabel(self.scroll_list, text="Nenhum aluno encontrado.", text_color="gray").pack(pady=20)
+            create_empty_state(self.scroll_list, "👤", "Nenhum aluno encontrado").pack(pady=40)
             return
 
         for row in rows:
             self._create_card(row)
 
     def _create_card(self, row: dict) -> None:
-        card = ctk.CTkFrame(self.scroll_list, fg_color=("gray90", "gray20"), corner_radius=8)
-        card.pack(fill="x", pady=4, padx=2)
+        bg = _c("list_card_bg")
+        hover = _c("list_card_hover")
         
-        # Frame interno para layout horizontal (Foto + Info)
+        card = ctk.CTkFrame(self.scroll_list, fg_color=bg, corner_radius=12)
+        card.pack(fill="x", pady=2, padx=5)
+
+        # Accent bar lateral sutil
+        accent = ctk.CTkFrame(card, width=4, fg_color=_c("list_card_accent"), corner_radius=2)
+        accent.pack(side="left", fill="y", padx=(10, 0), pady=6)
+
+        # Conteúdo
         content_frame = ctk.CTkFrame(card, fg_color="transparent")
-        content_frame.pack(fill="both", padx=5, pady=5)
+        content_frame.pack(side="left", fill="both", expand=True, padx=10, pady=6)
         
         # Foto (Miniatura Circular)
         foto_path = row["foto_perfil"]
@@ -247,7 +221,7 @@ class AlunosView(ctk.CTkFrame):
             except Exception:
                 pass
         
-        lbl_foto.pack(side="left", padx=(5, 10))
+        lbl_foto.pack(side="left", padx=(0, 10))
 
         # Info Frame
         info_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
@@ -255,28 +229,32 @@ class AlunosView(ctk.CTkFrame):
 
         # Info
         tel = row["telefone"] or ""
-        cpf_d = only_digits(row["cpf"])
-        cpf_fmt = format_cpf_value(cpf_d) if cpf_d else ""
         insta = row["instagram"] or ""
         
         # Header: Nome
-        lbl_nome = ctk.CTkLabel(info_frame, text=row["nome"], font=ctk.CTkFont(size=14, weight="bold"))
-        lbl_nome.pack(fill="x", anchor="w")
+        lbl_nome = ctk.CTkLabel(info_frame, text=row["nome"], font=ctk.CTkFont(size=14, weight="bold"), anchor="w")
+        lbl_nome.pack(fill="x")
         
         # Detalhes
         details = []
         if tel: details.append(tel)
         if insta: details.append(insta)
-        if cpf_fmt: details.append(f"CPF: {cpf_fmt}")
         
-        lbl_details = ctk.CTkLabel(info_frame, text=" | ".join(details), font=ctk.CTkFont(size=12), text_color="gray")
-        lbl_details.pack(fill="x", anchor="w")
+        lbl_details = ctk.CTkLabel(
+            info_frame, 
+            text=" | ".join(details) if details else "Nenhum contato", 
+            font=font_small(), 
+            text_color=_c("view_header_subtitle"),
+            anchor="w"
+        )
+        lbl_details.pack(fill="x")
 
-        # Bind events (clique em qualquer lugar do card carrega detalhes)
+        # Bind events
         for w in (card, content_frame, lbl_foto, info_frame, lbl_nome, lbl_details):
             w.bind("<Button-1>", lambda e, aid=row["id"]: self.load_aluno_details(aid))
-            w.bind("<Enter>", lambda e, c=card: c.configure(border_width=1, border_color="gray50"))
-            w.bind("<Leave>", lambda e, c=card: c.configure(border_width=0))
+            
+        bind_card_hover(card, bg, hover)
+
 
     def load_aluno_details(self, aluno_id: int) -> None:
         self.selected_id = aluno_id

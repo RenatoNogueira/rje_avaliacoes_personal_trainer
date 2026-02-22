@@ -48,20 +48,23 @@ class Updater:
                     base_path = self._get_base_path()
                     env_path = base_path / ".env"
                     if env_path.exists():
-                        with env_path.open("r") as f:
+                        with env_path.open("r", encoding="utf-8") as f:
                             for line in f:
-                                if line.startswith("GITHUB_TOKEN="):
-                                    github_token = line.strip().split("=", 1)[1].strip()
+                                if line.strip().startswith("GITHUB_TOKEN="):
+                                    raw_val = line.strip().split("=", 1)[1].strip()
+                                    # Remove possíveis comentários no final da linha (ex: TOKEN=abc # comentário)
+                                    github_token = raw_val.split("#")[0].strip()
                                     break
                 except Exception as e:
                     print(f"Erro ao ler .env: {e}")
             
             if github_token:
-                req.add_header("Authorization", f"token {github_token}")
+                # Usa Bearer (padrão moderno) ou token (legado). Bearer é mais robusto para tokens de granulação fina.
+                req.add_header("Authorization", f"Bearer {github_token}")
             else:
-                print("Aviso: Token do GitHub não encontrado. Atualizações de repositório privado podem falhar.")
+                print("Aviso: Token do GitHub não encontrado. Se o repositório for privado, a verificação falhará.")
             
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=8) as response:
                 data = json.loads(response.read().decode())
                 
             tag_name = data.get("tag_name", "").lstrip("v")
@@ -136,16 +139,17 @@ class Updater:
                      base_path = self._get_base_path()
                      env_path = base_path / ".env"
                      if env_path.exists():
-                         with env_path.open("r") as f:
+                         with env_path.open("r", encoding="utf-8") as f:
                              for line in f:
-                                 if line.startswith("GITHUB_TOKEN="):
-                                     github_token = line.strip().split("=", 1)[1].strip()
+                                 if line.strip().startswith("GITHUB_TOKEN="):
+                                     raw_val = line.strip().split("=", 1)[1].strip()
+                                     github_token = raw_val.split("#")[0].strip()
                                      break
                  except Exception:
                      pass
             
             if github_token:
-                req.add_header("Authorization", f"token {github_token}")
+                req.add_header("Authorization", f"Bearer {github_token}")
 
             with urllib.request.urlopen(req, timeout=30) as response, open(temp_zip, 'wb') as out_file:
                 shutil.copyfileobj(response, out_file)
