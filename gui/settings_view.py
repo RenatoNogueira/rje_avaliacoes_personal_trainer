@@ -6,6 +6,7 @@ import customtkinter as ctk
 from .utils import setup_enter_navigation
 
 from database import db
+from utils.image_utils import create_circular_image
 
 
 class SettingsView(ctk.CTkFrame):
@@ -128,15 +129,31 @@ class SettingsView(ctk.CTkFrame):
             users_content.pack(fill="both", expand=True)
             users_content.grid_columnconfigure(0, weight=1)
             users_content.grid_columnconfigure(1, weight=2)
-            users_content.grid_rowconfigure(0, weight=1)
+            users_content.grid_rowconfigure(1, weight=1) # Row 1 expande (lista), Row 0 é filtro
 
-            # Lista (Esquerda)
-            self.scroll_users = ctk.CTkScrollableFrame(users_content)
-            self.scroll_users.grid(row=0, column=0, padx=(0, 10), pady=0, sticky="nsew")
+            # Left Panel Container (Filtro + Lista)
+            left_panel = ctk.CTkFrame(users_content, fg_color="transparent")
+            left_panel.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 10))
+            left_panel.grid_rowconfigure(1, weight=1)
+            left_panel.grid_columnconfigure(0, weight=1)
+
+            # Filtros (Esquerda Topo)
+            filter_frame = ctk.CTkFrame(left_panel, fg_color="transparent")
+            filter_frame.grid(row=0, column=0, padx=0, pady=(0, 10), sticky="ew")
+            
+            self.entry_filtro_tel = ctk.CTkEntry(filter_frame, placeholder_text="Filtrar por telefone...")
+            self.entry_filtro_tel.pack(side="left", fill="x", expand=True, padx=(0, 5))
+            self.entry_filtro_tel.bind("<Return>", lambda e: self._load_users())
+            
+            ctk.CTkButton(filter_frame, text="🔍", width=40, command=self._load_users).pack(side="right")
+
+            # Lista (Esquerda Corpo)
+            self.scroll_users = ctk.CTkScrollableFrame(left_panel)
+            self.scroll_users.grid(row=1, column=0, padx=0, pady=0, sticky="nsew")
 
             # Form (Direita)
             form_user = ctk.CTkFrame(users_content)
-            form_user.grid(row=0, column=1, padx=(10, 0), pady=0, sticky="nsew")
+            form_user.grid(row=0, column=1, rowspan=2, padx=(10, 0), pady=0, sticky="nsew")
             form_user.grid_columnconfigure(1, weight=1)
 
             ctk.CTkLabel(form_user, text="Dados do Usuário", font=ctk.CTkFont(size=16, weight="bold")).grid(
@@ -205,13 +222,23 @@ class SettingsView(ctk.CTkFrame):
             for widget in self.scroll_users.winfo_children():
                 widget.destroy()
             
-            rows = db.fetch_all(
-                """
-                SELECT id, username, nome, cref, is_admin, ativo, is_trial
+            filtro_tel = ""
+            if hasattr(self, "entry_filtro_tel"):
+                filtro_tel = self.entry_filtro_tel.get().strip()
+
+            query = """
+                SELECT id, username, nome, cref, is_admin, ativo, is_trial, foto_perfil, telefone
                 FROM usuarios
-                ORDER BY username
-                """
-            )
+            """
+            params = []
+            
+            if filtro_tel:
+                query += " WHERE telefone LIKE ?"
+                params.append(f"%{filtro_tel}%")
+                
+            query += " ORDER BY username"
+
+            rows = db.fetch_all(query, tuple(params))
             
             if not rows:
                 ctk.CTkLabel(self.scroll_users, text="Nenhum usuário.", text_color="gray").pack(pady=10)
@@ -224,6 +251,29 @@ class SettingsView(ctk.CTkFrame):
         card = ctk.CTkFrame(self.scroll_users, fg_color=("gray90", "gray20"), corner_radius=6)
         card.pack(fill="x", pady=2, padx=2)
         
+        # Frame interno para layout horizontal (Foto + Info)
+        content = ctk.CTkFrame(card, fg_color="transparent")
+        content.pack(fill="both", padx=5, pady=5)
+        
+        # Foto
+        foto_path = row["foto_perfil"]
+        lbl_foto = ctk.CTkLabel(content, text="👤", width=36, height=36, fg_color="gray50", corner_radius=18)
+        if foto_path:
+            try:
+                from pathlib import Path
+                if Path(foto_path).exists():
+                    pil_img = create_circular_image(foto_path, (72, 72)) # Dobro para HiDPI
+                    if pil_img:
+                        ctk_img = ctk.CTkImage(pil_img, size=(36, 36))
+                        lbl_foto.configure(image=ctk_img, text="", fg_color="transparent")
+            except Exception:
+                pass
+        lbl_foto.pack(side="left", padx=(0, 8))
+
+        # Info Wrapper
+        info_wrapper = ctk.CTkFrame(content, fg_color="transparent")
+        info_wrapper.pack(side="left", fill="both", expand=True)
+
         status_color = "green" if row["ativo"] else "red"
         status_text = "Personal" if row["ativo"] else "Inativo"
         
@@ -238,8 +288,8 @@ class SettingsView(ctk.CTkFrame):
             
         role_text = " | ".join(role_parts)
         
-        header = ctk.CTkFrame(card, fg_color="transparent")
-        header.pack(fill="x", padx=8, pady=(6, 0))
+        header = ctk.CTkFrame(info_wrapper, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 0))
         
         lbl_user = ctk.CTkLabel(header, text=row["username"], font=ctk.CTkFont(size=13, weight="bold"))
         lbl_user.pack(side="left")
@@ -247,20 +297,23 @@ class SettingsView(ctk.CTkFrame):
         lbl_role = ctk.CTkLabel(header, text=role_text, font=ctk.CTkFont(size=10, weight="bold"), text_color="gray")
         lbl_role.pack(side="right")
         
-        lbl_nome = ctk.CTkLabel(card, text=row["nome"] or "-", font=ctk.CTkFont(size=12))
-        lbl_nome.pack(fill="x", padx=8, pady=(0, 0), anchor="w")
+        lbl_nome = ctk.CTkLabel(info_wrapper, text=row["nome"] or "-", font=ctk.CTkFont(size=12))
+        lbl_nome.pack(fill="x", anchor="w")
         
-        footer = ctk.CTkFrame(card, fg_color="transparent")
-        footer.pack(fill="x", padx=8, pady=(0, 6))
+        footer = ctk.CTkFrame(info_wrapper, fg_color="transparent")
+        footer.pack(fill="x", pady=(2, 0))
         
         lbl_status = ctk.CTkLabel(footer, text=status_text, font=ctk.CTkFont(size=11), text_color=status_color)
         lbl_status.pack(side="left")
+        
+        if row["telefone"]:
+             ctk.CTkLabel(footer, text=f" | Tel: {row['telefone']}", font=ctk.CTkFont(size=11), text_color="gray").pack(side="left")
         
         if row["cref"]:
             ctk.CTkLabel(footer, text=f"CREF: {row['cref']}", font=ctk.CTkFont(size=11), text_color="gray").pack(side="right")
 
         # Bind events
-        for w in (card, header, lbl_user, lbl_nome, footer, lbl_status, lbl_role):
+        for w in (card, content, lbl_foto, info_wrapper, header, lbl_user, lbl_nome, footer, lbl_status, lbl_role):
             w.bind("<Button-1>", lambda e, uid=row["id"]: self._on_user_card_click(uid))
             w.bind("<Enter>", lambda e, c=card: c.configure(border_width=1, border_color="gray50"))
             w.bind("<Leave>", lambda e, c=card: c.configure(border_width=0))

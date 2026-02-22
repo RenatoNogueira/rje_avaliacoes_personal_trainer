@@ -193,6 +193,9 @@ class AvaliacoesView(ctk.CTkFrame):
             corner_radius=6,
             padx=10,
             pady=6,
+            wraplength=450,
+            justify="left",
+            anchor="w"
         )
         self.label_ant_alertas.grid(
             row=2,
@@ -1149,10 +1152,11 @@ class AvaliacoesView(ctk.CTkFrame):
         texto_alertas = ""
         if partes:
             texto_alertas = " | ".join(partes)
+        
         if alertas:
             if texto_alertas:
-                texto_alertas += "  –  "
-            texto_alertas += "; ".join(alertas)
+                texto_alertas += "\n"
+            texto_alertas += "⚠️ " + "; ".join(alertas)
 
         if texto_alertas:
             self.label_ant_alertas.configure(

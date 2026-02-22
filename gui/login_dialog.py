@@ -153,7 +153,7 @@ class LoginDialog(ctk.CTkToplevel):
 
         row = db.fetch_one(
             """
-            SELECT id, username, senha_hash, nome, is_admin, ativo, is_trial, data_criacao
+            SELECT id, username, senha_hash, nome, is_admin, ativo, is_trial, data_criacao, foto_perfil, telefone
             FROM usuarios
             WHERE lower(username) = lower(?)
             """,
@@ -191,8 +191,14 @@ class LoginDialog(ctk.CTkToplevel):
             "username": row["username"],
             "nome": row["nome"],
             "is_admin": bool(row["is_admin"]),
+            "foto_perfil": row["foto_perfil"],
+            "telefone": row["telefone"],
         }
-        self.on_login_success(user_data)
+        try:
+            self.on_login_success(user_data)
+        except Exception as e:
+            print(f"Erro no callback de login: {e}")
+            pass
         self.destroy()
 
     def _show_error(self, msg):

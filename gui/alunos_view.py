@@ -9,11 +9,14 @@ from .utils import setup_enter_navigation, create_tooltip, show_toast
 from database import db
 
 
+from utils.image_utils import create_circular_image
+
 class AlunosView(ctk.CTkFrame):
     def __init__(self, master) -> None:
         super().__init__(master)
 
         self.selected_id = None
+        self.foto_perfil_path = None # Armazena caminho da foto selecionada
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -74,11 +77,34 @@ class AlunosView(ctk.CTkFrame):
         )
         row += 1
 
+        # Foto de Perfil
+        foto_frame = ctk.CTkFrame(form_scroll, fg_color="transparent")
+        foto_frame.grid(row=row, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
+        
+        # Label para preview (circular simulado ou quadrado)
+        self.lbl_foto_preview = ctk.CTkLabel(foto_frame, text="📷", width=100, height=100, fg_color="gray30", corner_radius=10)
+        self.lbl_foto_preview.pack(side="left", padx=(50, 20)) # Indentado para alinhar visualmente
+        
+        btn_foto_frame = ctk.CTkFrame(foto_frame, fg_color="transparent")
+        btn_foto_frame.pack(side="left")
+        
+        ctk.CTkButton(btn_foto_frame, text="Selecionar Foto...", command=self.on_select_foto, width=120).pack(pady=5)
+        ctk.CTkButton(btn_foto_frame, text="Remover Foto", command=self.on_remove_foto, fg_color="#c0392b", hover_color="#922b21", width=120).pack(pady=5)
+        
+        row += 1
+        
         ctk.CTkLabel(form_scroll, text="Nome:").grid(
             row=row, column=0, padx=10, pady=(10, 5), sticky="e"
         )
         self.entry_nome = ctk.CTkEntry(form_scroll)
         self.entry_nome.grid(row=row, column=1, padx=10, pady=(10, 5), sticky="ew")
+        
+        row += 1
+        ctk.CTkLabel(form_scroll, text="Instagram:").grid(
+            row=row, column=0, padx=10, pady=5, sticky="e"
+        )
+        self.entry_instagram = ctk.CTkEntry(form_scroll, placeholder_text="@usuario")
+        self.entry_instagram.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
 
         row += 1
         ctk.CTkLabel(form_scroll, text="Data de nascimento:").grid(
@@ -180,7 +206,7 @@ class AlunosView(ctk.CTkFrame):
             widget.destroy()
 
         filtro = self.entry_filtro_nome.get().strip()
-        query = "SELECT id, nome, data_nascimento, telefone, cpf FROM alunos"
+        query = "SELECT id, nome, data_nascimento, telefone, cpf, foto_perfil, instagram FROM alunos"
         params = []
         
         if filtro:
@@ -201,26 +227,53 @@ class AlunosView(ctk.CTkFrame):
     def _create_card(self, row: dict) -> None:
         card = ctk.CTkFrame(self.scroll_list, fg_color=("gray90", "gray20"), corner_radius=8)
         card.pack(fill="x", pady=4, padx=2)
+        
+        # Frame interno para layout horizontal (Foto + Info)
+        content_frame = ctk.CTkFrame(card, fg_color="transparent")
+        content_frame.pack(fill="both", padx=5, pady=5)
+        
+        # Foto (Miniatura Circular)
+        foto_path = row["foto_perfil"]
+        lbl_foto = ctk.CTkLabel(content_frame, text="👤", width=50, height=50, fg_color="gray50", corner_radius=25)
+        
+        if foto_path:
+            try:
+                from pathlib import Path
+                if Path(foto_path).exists():
+                    pil_img = create_circular_image(foto_path, (100, 100)) # Gera maior para renderizar melhor (Retina/HighDPI)
+                    if pil_img:
+                        ctk_img = ctk.CTkImage(pil_img, size=(50, 50))
+                        lbl_foto.configure(image=ctk_img, text="", fg_color="transparent") # Transparente para ver o corte
+            except Exception:
+                pass
+        
+        lbl_foto.pack(side="left", padx=(5, 10))
+
+        # Info Frame
+        info_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        info_frame.pack(side="left", fill="both", expand=True)
 
         # Info
         tel = row["telefone"] or ""
         cpf_d = only_digits(row["cpf"])
         cpf_fmt = format_cpf_value(cpf_d) if cpf_d else ""
+        insta = row["instagram"] or ""
         
         # Header: Nome
-        lbl_nome = ctk.CTkLabel(card, text=row["nome"], font=ctk.CTkFont(size=14, weight="bold"))
-        lbl_nome.pack(fill="x", padx=10, pady=(8, 2), anchor="w")
+        lbl_nome = ctk.CTkLabel(info_frame, text=row["nome"], font=ctk.CTkFont(size=14, weight="bold"))
+        lbl_nome.pack(fill="x", anchor="w")
         
         # Detalhes
         details = []
         if tel: details.append(tel)
+        if insta: details.append(insta)
         if cpf_fmt: details.append(f"CPF: {cpf_fmt}")
         
-        lbl_details = ctk.CTkLabel(card, text=" | ".join(details), font=ctk.CTkFont(size=12), text_color="gray")
-        lbl_details.pack(fill="x", padx=10, pady=(0, 8), anchor="w")
+        lbl_details = ctk.CTkLabel(info_frame, text=" | ".join(details), font=ctk.CTkFont(size=12), text_color="gray")
+        lbl_details.pack(fill="x", anchor="w")
 
-        # Bind events
-        for w in (card, lbl_nome, lbl_details):
+        # Bind events (clique em qualquer lugar do card carrega detalhes)
+        for w in (card, content_frame, lbl_foto, info_frame, lbl_nome, lbl_details):
             w.bind("<Button-1>", lambda e, aid=row["id"]: self.load_aluno_details(aid))
             w.bind("<Enter>", lambda e, c=card: c.configure(border_width=1, border_color="gray50"))
             w.bind("<Leave>", lambda e, c=card: c.configure(border_width=0))
@@ -229,7 +282,7 @@ class AlunosView(ctk.CTkFrame):
         self.selected_id = aluno_id
         row = db.fetch_one(
             """
-            SELECT id, nome, data_nascimento, telefone, email, objetivo, observacoes_medicas, cpf, cep
+            SELECT id, nome, data_nascimento, telefone, email, objetivo, observacoes_medicas, cpf, cep, foto_perfil, instagram
             FROM alunos
             WHERE id = ?
             """,
@@ -238,8 +291,15 @@ class AlunosView(ctk.CTkFrame):
         if row is None:
             return
 
+        # Foto
+        self.foto_perfil_path = row["foto_perfil"]
+        self._update_foto_preview(self.foto_perfil_path)
+
         self.entry_nome.delete(0, "end")
         self.entry_nome.insert(0, row["nome"] or "")
+        
+        self.entry_instagram.delete(0, "end")
+        self.entry_instagram.insert(0, row["instagram"] or "")
 
         self.entry_data_nascimento.delete(0, "end")
         try:
@@ -248,7 +308,8 @@ class AlunosView(ctk.CTkFrame):
                 self.entry_data_nascimento.insert(0, d.strftime("%d/%m/%Y"))
         except Exception:
             self.entry_data_nascimento.insert(0, row["data_nascimento"] or "")
-
+        
+        # ... continuação
         self.entry_telefone.delete(0, "end")
         self.entry_telefone.insert(0, row["telefone"] or "")
 
@@ -276,8 +337,12 @@ class AlunosView(ctk.CTkFrame):
 
     def on_novo(self) -> None:
         self.selected_id = None
+        
+        self.foto_perfil_path = None
+        self._update_foto_preview(None)
 
         self.entry_nome.delete(0, "end")
+        self.entry_instagram.delete(0, "end")
         self.entry_data_nascimento.delete(0, "end")
         self.entry_telefone.delete(0, "end")
         try:
@@ -291,8 +356,40 @@ class AlunosView(ctk.CTkFrame):
         self.text_obs_medicas.delete("1.0", "end")
         self.text_obs_medicas.configure(state="normal")
 
+    def on_select_foto(self):
+        from customtkinter import filedialog
+        path = filedialog.askopenfilename(
+            title="Selecionar Foto de Perfil",
+            filetypes=[("Imagens", "*.png;*.jpg;*.jpeg;*.bmp")]
+        )
+        if path:
+            self.foto_perfil_path = path
+            self._update_foto_preview(path)
+
+    def on_remove_foto(self):
+        self.foto_perfil_path = None
+        self._update_foto_preview(None)
+
+    def _update_foto_preview(self, path):
+        if path:
+            try:
+                from pathlib import Path
+                if Path(path).exists():
+                    pil_img = create_circular_image(path, (200, 200)) # Qualidade maior
+                    if pil_img:
+                        ctk_img = ctk.CTkImage(pil_img, size=(100, 100))
+                        self.lbl_foto_preview.configure(image=ctk_img, text="", fg_color="transparent")
+                        self.lbl_foto_preview._image_ref = ctk_img
+                else:
+                    self.lbl_foto_preview.configure(image=None, text="Arquivo\nnão encontrado", fg_color="gray30")
+            except Exception:
+                self.lbl_foto_preview.configure(image=None, text="Erro", fg_color="gray30")
+        else:
+            self.lbl_foto_preview.configure(image=None, text="📷", fg_color="gray30")
+
     def on_salvar(self) -> None:
         nome = self.entry_nome.get().strip()
+        instagram = self.entry_instagram.get().strip() or None
         data_nascimento_str = self.entry_data_nascimento.get().strip()
         data_nascimento = None
         if data_nascimento_str:
@@ -357,14 +454,12 @@ class AlunosView(ctk.CTkFrame):
                 )
                 return
 
-        # telefone já validado por máscara; permite vazio
-
         if self.selected_id is None:
             db.execute(
                 """
                 INSERT INTO alunos
-                    (nome, data_nascimento, telefone, email, objetivo, observacoes_medicas, cpf, cep)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (nome, data_nascimento, telefone, email, objetivo, observacoes_medicas, cpf, cep, foto_perfil, instagram)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     nome,
@@ -375,6 +470,8 @@ class AlunosView(ctk.CTkFrame):
                     observacoes_medicas,
                     only_digits(cpf) if cpf else None,
                     only_digits(cep) if cep else None,
+                    self.foto_perfil_path,
+                    instagram
                 ),
                 commit=True,
             )
@@ -383,7 +480,8 @@ class AlunosView(ctk.CTkFrame):
                 """
                 UPDATE alunos
                 SET nome = ?, data_nascimento = ?, telefone = ?, email = ?,
-                    objetivo = ?, observacoes_medicas = ?, cpf = ?, cep = ?
+                    objetivo = ?, observacoes_medicas = ?, cpf = ?, cep = ?,
+                    foto_perfil = ?, instagram = ?
                 WHERE id = ?
                 """,
                 (
@@ -395,6 +493,8 @@ class AlunosView(ctk.CTkFrame):
                     observacoes_medicas,
                     only_digits(cpf) if cpf else None,
                     only_digits(cep) if cep else None,
+                    self.foto_perfil_path,
+                    instagram,
                     self.selected_id,
                 ),
                 commit=True,

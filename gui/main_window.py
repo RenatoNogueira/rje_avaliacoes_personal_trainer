@@ -466,7 +466,24 @@ class Application(ctk.CTk):
             telefone_var=self.telefone_var,
             get_logo_path=lambda: self.logo_path,
             set_branding=self._set_branding,
+            current_user=self.current_user,
+            on_update_profile=self._update_user_profile
         )
+
+    def _update_user_profile(self, user_id: int, foto_path: str, telefone: str) -> None:
+        try:
+            db.execute(
+                "UPDATE usuarios SET foto_perfil = ?, telefone = ? WHERE id = ?",
+                (foto_path, telefone, user_id),
+                commit=True
+            )
+            # Atualiza objeto current_user em memória
+            if self.current_user and int(self.current_user["id"]) == user_id:
+                self.current_user = dict(self.current_user) # copia
+                self.current_user["foto_perfil"] = foto_path
+                self.current_user["telefone"] = telefone
+        except Exception as e:
+            print(f"Erro ao atualizar perfil: {e}")
 
     def show_about(self) -> None:
         AboutDialog(self)

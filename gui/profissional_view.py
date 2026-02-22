@@ -5,6 +5,7 @@ from PIL import Image
 import customtkinter as ctk
 from .utils import setup_enter_navigation
 from .input_masks import bind_mask
+from utils.image_utils import create_circular_image
 
 
 class ProfissionalView(ctk.CTkFrame):
@@ -17,6 +18,8 @@ class ProfissionalView(ctk.CTkFrame):
         telefone_var: ctk.StringVar,
         get_logo_path,
         set_branding,
+        current_user=None,
+        on_update_profile=None
     ) -> None:
         super().__init__(master)
         self.professor_var = professor_var
@@ -25,7 +28,11 @@ class ProfissionalView(ctk.CTkFrame):
         self.telefone_var = telefone_var
         self.get_logo_path = get_logo_path
         self.set_branding = set_branding
+        # Converter Row para dict para permitir .get() e evitar erros
+        self.current_user = dict(current_user) if current_user else None
+        self.on_update_profile = on_update_profile
         self.selected_logo_path: str | None = None
+        self.foto_perfil_path: str | None = self.current_user.get("foto_perfil") if self.current_user else None
 
         # Layout: Left (Preview Card), Right (Form)
         self.grid_columnconfigure(0, weight=1)  # Left panel (smaller)
@@ -62,13 +69,24 @@ class ProfissionalView(ctk.CTkFrame):
         )
         self.lbl_marca_preview.grid(row=1, column=0, padx=10, pady=(0, 5))
 
+        # Foto Perfil Preview (Miniatura circular)
+        self.lbl_foto_perfil_preview = ctk.CTkLabel(
+            self.card_frame, 
+            text="👤", 
+            width=80, 
+            height=80, 
+            fg_color="gray50", 
+            corner_radius=40 # Circular se suportado pelo tema/renderizador
+        )
+        self.lbl_foto_perfil_preview.grid(row=2, column=0, pady=(10, 5))
+
         # Professor Name Preview
         self.lbl_prof_preview = ctk.CTkLabel(
             self.card_frame,
             textvariable=self.professor_var,
             font=ctk.CTkFont(size=14)
         )
-        self.lbl_prof_preview.grid(row=2, column=0, padx=10, pady=(0, 20))
+        self.lbl_prof_preview.grid(row=3, column=0, padx=10, pady=(0, 20))
 
         # Contact Info Preview
         self.contact_frame = ctk.CTkFrame(self.left_panel, fg_color="transparent")
@@ -115,6 +133,17 @@ class ProfissionalView(ctk.CTkFrame):
         self.form_container.grid_columnconfigure(1, weight=1)
 
         row = 0
+        
+        # Foto de Perfil
+        ctk.CTkLabel(self.form_container, text="Foto de Perfil:", font=ctk.CTkFont(weight="bold")).grid(
+            row=row, column=0, padx=10, pady=10, sticky="e"
+        )
+        frame_foto = ctk.CTkFrame(self.form_container, fg_color="transparent")
+        frame_foto.grid(row=row, column=1, padx=10, pady=10, sticky="w")
+        ctk.CTkButton(frame_foto, text="Selecionar", command=self.on_select_foto_perfil, width=80).pack(side="left", padx=(0, 5))
+        ctk.CTkButton(frame_foto, text="Remover", command=self.on_remove_foto_perfil, width=80, fg_color="#c0392b", hover_color="#922b21").pack(side="left")
+        
+        row += 1
         self._add_form_row(row, "Nome do Profissional:", self.professor_var)
         row += 1
         self._add_form_row(row, "Nome da Marca/Empresa:", self.marca_var)
@@ -191,6 +220,32 @@ class ProfissionalView(ctk.CTkFrame):
         else:
             self.logo_preview.configure(image=None, text="[Sem Logo]")
 
+        # Update Foto Perfil
+        if self.foto_perfil_path and Path(self.foto_perfil_path).exists():
+            try:
+                pil_img = create_circular_image(self.foto_perfil_path, (160, 160))
+                if pil_img:
+                    ctk_img = ctk.CTkImage(pil_img, size=(80, 80))
+                    self.lbl_foto_perfil_preview.configure(image=ctk_img, text="", fg_color="transparent")
+                    self.lbl_foto_perfil_preview._image_ref = ctk_img
+            except Exception:
+                self.lbl_foto_perfil_preview.configure(image=None, text="Erro", fg_color="gray50")
+        else:
+            self.lbl_foto_perfil_preview.configure(image=None, text="👤", fg_color="gray50")
+
+    def on_select_foto_perfil(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Imagens", "*.png;*.jpg;*.jpeg")],
+            title="Selecionar foto de perfil",
+        )
+        if file_path:
+            self.foto_perfil_path = file_path
+            self._update_preview()
+
+    def on_remove_foto_perfil(self):
+        self.foto_perfil_path = None
+        self._update_preview()
+
     def on_escolher_logo(self) -> None:
         file_path = filedialog.askopenfilename(
             filetypes=[("Imagens PNG", "*.png"), ("Todos os arquivos", "*.*")],
@@ -237,4 +292,42 @@ class ProfissionalView(ctk.CTkFrame):
         telefone = self.telefone_var.get().strip()
         
         self.set_branding(logo_target, marca, email, telefone)
-        messagebox.showinfo("Sucesso", "Identidade visual salva com sucesso.")
+
+        # Atualiza foto de perfil e telefone do usuário logado
+        if self.on_update_profile and self.current_user:
+            try:
+                user_id = int(self.current_user["id"])
+                
+                # Copiar foto para pasta gerenciada se for nova
+                final_foto_path = self.foto_perfil_path
+                if self.foto_perfil_path and Path(self.foto_perfil_path).exists():
+                    # Verifica se já não está na pasta de media
+                    base_dir = Path(__file__).resolve().parent.parent
+                    media_dir = base_dir / "media" / "usuarios"
+                    media_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    p_src = Path(self.foto_perfil_path)
+                    # Se não estiver dentro de media/usuarios, copia
+                    if media_dir.resolve() not in p_src.resolve().parents:
+                        import shutil
+                        import time
+                        # Timestamp para evitar cache ou conflito
+                        ts = int(time.time())
+                        ext = p_src.suffix or ".png"
+                        new_name = f"user_{user_id}_{ts}{ext}"
+                        dest_path = media_dir / new_name
+                        shutil.copy2(p_src, dest_path)
+                        final_foto_path = str(dest_path)
+                        # Atualiza a referência local
+                        self.foto_perfil_path = final_foto_path
+
+                self.on_update_profile(
+                    user_id, 
+                    final_foto_path,
+                    telefone
+                )
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao atualizar perfil do usuário: {e}")
+                print(f"Erro ao atualizar perfil do usuário: {e}")
+
+        messagebox.showinfo("Sucesso", "Identidade visual e perfil salvos com sucesso.")

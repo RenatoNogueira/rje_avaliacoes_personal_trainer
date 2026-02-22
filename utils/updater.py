@@ -26,6 +26,12 @@ class Updater:
         thread.daemon = True
         thread.start()
 
+    def _get_base_path(self):
+        if getattr(sys, 'frozen', False):
+            return Path(sys.executable).parent
+        else:
+            return Path(__file__).resolve().parent.parent
+
     def _check_worker(self, callback):
         try:
             # 1. Obter releases do GitHub
@@ -39,18 +45,21 @@ class Updater:
             github_token = os.environ.get("GITHUB_TOKEN")
             if not github_token:
                 try:
-                    env_path = Path(".env")
+                    base_path = self._get_base_path()
+                    env_path = base_path / ".env"
                     if env_path.exists():
                         with env_path.open("r") as f:
                             for line in f:
                                 if line.startswith("GITHUB_TOKEN="):
                                     github_token = line.strip().split("=", 1)[1].strip()
                                     break
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Erro ao ler .env: {e}")
             
             if github_token:
                 req.add_header("Authorization", f"token {github_token}")
+            else:
+                print("Aviso: Token do GitHub não encontrado. Atualizações de repositório privado podem falhar.")
             
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode())
@@ -58,6 +67,8 @@ class Updater:
             tag_name = data.get("tag_name", "").lstrip("v")
             self.latest_version = tag_name
             self.release_notes = data.get("body", "")
+            
+            print(f"Versão Local: {self.current_version} | Versão Remota: {tag_name}")
             
             # 2. Comparar versões (semântica simples)
             if self._is_newer(tag_name, self.current_version):
@@ -122,7 +133,8 @@ class Updater:
             github_token = os.environ.get("GITHUB_TOKEN")
             if not github_token:
                  try:
-                     env_path = Path(".env")
+                     base_path = self._get_base_path()
+                     env_path = base_path / ".env"
                      if env_path.exists():
                          with env_path.open("r") as f:
                              for line in f:
