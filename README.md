@@ -1,6 +1,6 @@
 # RJE Avaliações - Sistema de Gestão para Personal Trainers
 
-**Versão:** 1.0.0  
+**Versão:** 1.0.17  
 **Desenvolvido por:** RJE Tecnologia
 
 O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Python (CustomTkinter) para auxiliar Personal Trainers na gestão de seus alunos, avaliações físicas, prescrição de treinos e agenda.
@@ -12,13 +12,15 @@ O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Pytho
 ### 1. **Gestão de Alunos**
 *   Cadastro completo de alunos (Dados pessoais, contato, anamnese básica).
 *   Histórico de avaliações e treinos vinculados a cada aluno.
-*   Busca rápida e listagem organizada.
+*   Busca rápida e listagem organizada com design compacto.
+*   Máscaras de formatação automáticas (CPF, CEP, Telefone, Data).
 
 ### 2. **Avaliações Físicas**
 *   Registro de medidas antropométricas (perímetros, dobras cutâneas).
+*   **Controle de Pressão Arterial:** Registro de PA sistólica e diastólica com alertas clínicos visuais baseados nas diretrizes médicas.
 *   Cálculo automático de percentual de gordura (Protocolo Pollock 3 e 7 Dobras).
-*   Classificação de risco (IMC, RCQ).
-*   Geração de relatórios comparativos em PDF para acompanhar a evolução.
+*   Classificação de risco e estado de saúde (IMC, RCQ, Perfil Lipídico).
+*   Geração de relatórios comparativos em PDF para acompanhar a evolução, incluindo alertas detalhados.
 
 ### 3. **Prescrição de Treinos**
 *   Montagem de treinos personalizados.
@@ -32,11 +34,11 @@ O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Pytho
 
 ### 4. **Agenda e Dashboard**
 *   **Dashboard Interativo:** Visão geral com próximos agendamentos, aniversariantes do mês e estatísticas rápidas.
-*   **Agenda:** Marcação de aulas e avaliações, com visualização clara dos compromissos.
+*   **Agenda:** Marcação de aulas e avaliações, com visualização clara dos compromissos e status de execução.
 
 ### 5. **Perfil Profissional e Branding**
-*   Personalização do sistema com a marca do Personal Trainer (Logo, Nome, Contato).
-*   Esses dados aparecem automaticamente nos cabeçalhos dos relatórios PDF gerados.
+*   Personalização do sistema com a marca do Personal Trainer (Logo, Nome, Contato, Reg. CREF).
+*   Esses dados e selos profissionais aparecem automaticamente nos cabeçalhos dos relatórios PDF gerados.
 
 ### 6. **Administração e Segurança**
 *   **Login Seguro:** Autenticação com senha criptografada.
