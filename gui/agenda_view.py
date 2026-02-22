@@ -473,9 +473,15 @@ class AgendaView(ctk.CTkFrame):
         if filtro_like:
             rows = db.fetch_all(
                 """
-                SELECT a.id, a.data, a.horario, a.tipo, a.status, al.nome AS nome_aluno
+                SELECT a.id, a.data, a.horario, a.tipo, a.status, al.nome AS nome_aluno, al.cpf,
+                       v.psist, v.pdiast
                 FROM agendamentos a
                 JOIN alunos al ON al.id = a.id_aluno
+                LEFT JOIN (
+                    SELECT id_aluno, pressao_sistolica as psist, pressao_diastolica as pdiast,
+                           ROW_NUMBER() OVER (PARTITION BY id_aluno ORDER BY data DESC, id DESC) as rn
+                    FROM avaliacoes_fisicas
+                ) v ON v.id_aluno = a.id_aluno AND v.rn = 1
                 WHERE a.data = ?
                   AND al.nome LIKE ?
                 ORDER BY a.horario
@@ -485,9 +491,15 @@ class AgendaView(ctk.CTkFrame):
         else:
             rows = db.fetch_all(
                 """
-                SELECT a.id, a.data, a.horario, a.tipo, a.status, al.nome AS nome_aluno
+                SELECT a.id, a.data, a.horario, a.tipo, a.status, al.nome AS nome_aluno, al.cpf,
+                       v.psist, v.pdiast
                 FROM agendamentos a
                 JOIN alunos al ON al.id = a.id_aluno
+                LEFT JOIN (
+                    SELECT id_aluno, pressao_sistolica as psist, pressao_diastolica as pdiast,
+                           ROW_NUMBER() OVER (PARTITION BY id_aluno ORDER BY data DESC, id DESC) as rn
+                    FROM avaliacoes_fisicas
+                ) v ON v.id_aluno = a.id_aluno AND v.rn = 1
                 WHERE a.data = ?
                 ORDER BY a.horario
                 """,

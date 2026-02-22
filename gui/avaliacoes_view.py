@@ -1446,7 +1446,7 @@ class AvaliacoesView(ctk.CTkFrame):
                    dobras_cutaneas, perimetros, anamnese,
                    historico_saude, estilo_vida, metas,
                    postura, funcional_mobilidade, cardio, forca_resistencia,
-                   ldl, hdl,
+                   ldl, hdl, pressao_sistolica, pressao_diastolica,
                    foto_frente, foto_costas, foto_lateral_dir, foto_lateral_esq
             FROM avaliacoes_fisicas
             WHERE id = ?

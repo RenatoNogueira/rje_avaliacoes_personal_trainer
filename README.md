@@ -1,6 +1,6 @@
 # RJE Avaliações - Sistema de Gestão para Personal Trainers
 
-**Versão:** 1.0.17  
+**Versão:** 1.0.18  
 **Desenvolvido por:** RJE Tecnologia
 
 O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Python (CustomTkinter) para auxiliar Personal Trainers na gestão de seus alunos, avaliações físicas, prescrição de treinos e agenda.
@@ -36,7 +36,7 @@ O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Pytho
 *   **Dashboard Interativo:** Visão geral com próximos agendamentos, aniversariantes do mês e estatísticas rápidas.
 *   **Agenda:** Marcação de aulas e avaliações, com visualização clara dos compromissos e status de execução.
 
-### 5. **Perfil Profissional e Branding**
+*   **Integração Cross-Report:** Sincronização automática de dados de saúde (como Pressão Arterial) entre Avaliações, Fichas de Treino e Agenda Diária.
 *   Personalização do sistema com a marca do Personal Trainer (Logo, Nome, Contato, Reg. CREF).
 *   Esses dados e selos profissionais aparecem automaticamente nos cabeçalhos dos relatórios PDF gerados.
 

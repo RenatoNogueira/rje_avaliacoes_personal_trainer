@@ -51,7 +51,7 @@ def gerar_pdf_agenda(
     pdf.set_font("Helvetica", "B", 16)
     titulo = "Agenda do Dia"
     if marca_nome:
-        titulo = f"{marca_nome} – {titulo}"
+        titulo = f"{marca_nome} - {titulo}"
     pdf.cell(0, 10, titulo, ln=True)
     if contato_linha:
         pdf.set_font("Helvetica", "", 9)
@@ -67,15 +67,17 @@ def gerar_pdf_agenda(
     pdf.cell(0, 8, text_data, ln=True)
     pdf.ln(4)
 
-    col_horario = 25
-    col_aluno = 60
-    col_cpf = 35
-    col_tipo = 35
-    col_status = 35
+    col_horario = 22
+    col_aluno = 55
+    col_pa = 25
+    col_cpf = 30
+    col_tipo = 33
+    col_status = 25
 
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(col_horario, 8, "Horário", border=1)
     pdf.cell(col_aluno, 8, "Aluno", border=1)
+    pdf.cell(col_pa, 8, "P.A.", border=1)
     pdf.cell(col_cpf, 8, "CPF", border=1)
     pdf.cell(col_tipo, 8, "Tipo", border=1)
     pdf.cell(col_status, 8, "Status", border=1)
@@ -89,9 +91,21 @@ def gerar_pdf_agenda(
         cpf = _format_cpf(ag.get("cpf") or "")
         tipo = str(ag.get("tipo") or "")
         status = str(ag.get("status") or "")
+        
+        # Format Blood Pressure
+        psist = ag.get("psist")
+        pdiast = ag.get("pdiast")
+        pa_val = "-"
+        if psist is not None and str(psist).strip() != "" or pdiast is not None and str(pdiast).strip() != "":
+            ps = float(psist) if psist and str(psist).strip() != "" else 0
+            pd = float(pdiast) if pdiast and str(pdiast).strip() != "" else 0
+            pa_val = f"{int(ps)}/{int(pd)}"
+            if ps >= 10 and pd >= 10:
+                pa_val += f" ({int(ps/10)}x{int(pd/10)})"
 
         pdf.cell(col_horario, 8, horario[:10], border=1)
-        pdf.cell(col_aluno, 8, aluno[:34], border=1)
+        pdf.cell(col_aluno, 8, aluno[:30], border=1)
+        pdf.cell(col_pa, 8, pa_val, border=1)
         pdf.cell(col_cpf, 8, cpf[:18], border=1)
         pdf.cell(col_tipo, 8, tipo[:18], border=1)
         pdf.cell(col_status, 8, status[:18], border=1)

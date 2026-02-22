@@ -88,6 +88,10 @@ def gerar_pdf_avaliacao(
         except Exception:
             return str(v)
 
+    def check_space(h_needed):
+        if pdf.get_y() + h_needed > pdf.page_break_trigger:
+            pdf.add_page()
+
     peso_fmt = fmt_val(dados_avaliacao.get("peso"))
     altura_fmt = fmt_val(dados_avaliacao.get("altura"), decimals=2)
     percent_fmt = fmt_val(dados_avaliacao.get("percentual_gordura"))
@@ -128,14 +132,16 @@ def gerar_pdf_avaliacao(
         pdf.cell(0, 6, f"LDL: {ldl_fmt} mg/dL | HDL: {hdl_fmt} mg/dL", ln=True)
         pdf.set_font("Helvetica", "", 11)
 
-    if psist is not None or pdiast is not None:
-        ps = float(psist) if psist is not None else 0
-        pd = float(pdiast) if pdiast is not None else 0
+    if psist is not None and str(psist).strip() != "" or pdiast is not None and str(pdiast).strip() != "":
+        ps = float(psist) if psist and str(psist).strip() != "" else 0
+        pd = float(pdiast) if pdiast and str(pdiast).strip() != "" else 0
         pa_texto = f"{fmt_val(psist, decimals=0)}/{fmt_val(pdiast, decimals=0)} mmHg"
         
         # O Brasil costuma falar algo como "12 por 8", vamos mostrar também
         if ps >= 10 and pd >= 10:
-            pa_texto += f" ({fmt_val(ps/10, decimals=0)} por {fmt_val(pd/10, decimals=0)})"
+            ps_br = int(ps / 10)
+            pd_br = int(pd / 10)
+            pa_texto += f" ({ps_br} por {pd_br})"
 
         alerta_pa = ""
         dica_pa = ""
@@ -160,14 +166,13 @@ def gerar_pdf_avaliacao(
             dica_pa = "Dicas: Excelente! Continue com seus hábitos saudáveis e rotina de exercícios para manter o sistema cardiovascular protegido."
 
         pdf.ln(2)
-        pdf.cell(0, 7, "Pressão Arterial:", ln=True)
         pdf.set_font("Helvetica", "B", 10)
         pdf.cell(0, 6, f"PA: {pa_texto} - {alerta_pa}", ln=True)
         if dica_pa:
             pdf.set_font("Helvetica", "", 9)
             pdf.multi_cell(0, 5, dica_pa)
         pdf.set_font("Helvetica", "", 11)
-
+    check_space(20)
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 8, "Dobras cutâneas", ln=True)
@@ -177,6 +182,7 @@ def gerar_pdf_avaliacao(
     dobras = dados_avaliacao.get("dobras_cutaneas") or "-"
     pdf.multi_cell(0, 6, str(dobras))
 
+    check_space(20)
     pdf.ln(2)
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 8, "Perímetros", ln=True)
@@ -186,6 +192,7 @@ def gerar_pdf_avaliacao(
     perimetros = dados_avaliacao.get("perimetros") or "-"
     pdf.multi_cell(0, 6, str(perimetros))
 
+    check_space(20)
     pdf.ln(2)
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 8, "Anamnese", ln=True)
@@ -199,6 +206,7 @@ def gerar_pdf_avaliacao(
     estilo = dados_avaliacao.get("estilo_vida")
     metas = dados_avaliacao.get("metas")
     if historico or estilo or metas:
+        check_space(20)
         pdf.ln(2)
         pdf.set_font("Helvetica", "B", 12)
         pdf.cell(0, 8, "Entrevista inicial", ln=True)
@@ -206,14 +214,21 @@ def gerar_pdf_avaliacao(
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.set_font("Helvetica", "", 11)
         if historico:
+            check_space(8)
+            pdf.set_x(10)
             pdf.multi_cell(0, 6, f"Histórico de saúde: {historico}")
         if estilo:
+            check_space(8)
+            pdf.set_x(10)
             pdf.multi_cell(0, 6, f"Estilo de vida: {estilo}")
         if metas:
+            check_space(8)
+            pdf.set_x(10)
             pdf.multi_cell(0, 6, f"Metas: {metas}")
 
     postura = dados_avaliacao.get("postura")
     if postura:
+        check_space(20)
         pdf.ln(2)
         pdf.set_font("Helvetica", "B", 12)
         pdf.cell(0, 8, "Avaliação postural", ln=True)
@@ -224,6 +239,7 @@ def gerar_pdf_avaliacao(
 
     funcional = dados_avaliacao.get("funcional_mobilidade")
     if funcional:
+        check_space(20)
         pdf.ln(2)
         pdf.set_font("Helvetica", "B", 12)
         pdf.cell(0, 8, "Funcional e mobilidade", ln=True)
@@ -235,6 +251,7 @@ def gerar_pdf_avaliacao(
     cardio = dados_avaliacao.get("cardio")
     forca = dados_avaliacao.get("forca_resistencia")
     if cardio or forca:
+        check_space(20)
         pdf.ln(2)
         pdf.set_font("Helvetica", "B", 12)
         pdf.cell(0, 8, "Cardiorrespiratório e força", ln=True)
@@ -242,8 +259,12 @@ def gerar_pdf_avaliacao(
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.set_font("Helvetica", "", 11)
         if cardio:
+            check_space(8)
+            pdf.set_x(10)
             pdf.multi_cell(0, 6, f"Cardiorrespiratório: {cardio}")
         if forca:
+            check_space(8)
+            pdf.set_x(10)
             pdf.multi_cell(0, 6, f"Força/Resistência: {forca}")
 
     # Fotos

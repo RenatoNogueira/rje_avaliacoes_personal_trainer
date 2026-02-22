@@ -983,6 +983,18 @@ class TreinosView(ctk.CTkFrame):
         if aluno is None:
             return
 
+        # Fetch latest blood pressure
+        ultima_aval = db.fetch_one(
+            """
+            SELECT pressao_sistolica, pressao_diastolica 
+            FROM avaliacoes_fisicas 
+            WHERE id_aluno = ? 
+            ORDER BY data DESC, id DESC 
+            LIMIT 1
+            """,
+            (treino["id_aluno"],),
+        )
+
         exercicios_rows = db.fetch_all(
             """
             SELECT nome_exercicio, series, repeticoes, carga, descanso, observacoes, divisao
@@ -1007,6 +1019,11 @@ class TreinosView(ctk.CTkFrame):
             return
 
         dados_treino = dict(treino)
+        
+        if ultima_aval:
+            dados_treino["pressao_sistolica"] = ultima_aval["pressao_sistolica"]
+            dados_treino["pressao_diastolica"] = ultima_aval["pressao_diastolica"]
+            
         dados_aluno = dict(aluno)
         professor_nome = self.professor_nome_var.get().strip()
         professor_cref = self.cref_var.get().strip()

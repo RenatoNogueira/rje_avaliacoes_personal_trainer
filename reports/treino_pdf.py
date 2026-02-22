@@ -157,6 +157,58 @@ def gerar_pdf_treino(
         
     pdf.cell(0, 6, data_criacao, align="L", ln=True)
     
+    # Adicionar Pressão Arterial
+    psist = dados_treino.get("pressao_sistolica")
+    pdiast = dados_treino.get("pressao_diastolica")
+
+    if psist is not None or pdiast is not None:
+        def fmt_val(v):
+            if v is None or str(v).strip() == "": return "-"
+            try:
+                val = float(v)
+                if val.is_integer():
+                    return f"{int(val)}"
+                return f"{val:.1f}".replace(".", ",")
+            except Exception:
+                return str(v)
+
+        ps = float(psist) if psist is not None else 0
+        pd = float(pdiast) if pdiast is not None else 0
+        pa_texto = f"{fmt_val(psist)}/{fmt_val(pdiast)} mmHg"
+
+        if ps >= 10 and pd >= 10:
+            pa_texto += f" ({int(ps / 10)} por {int(pd / 10)})"
+
+        alerta_pa = ""
+        dica_pa = ""
+        if (ps > 0 and ps < 90) or (pd > 0 and pd < 60):
+            alerta_pa = "Hipotensão (Pressão Baixa)"
+            dica_pa = "Dicas: Mantenha-se hidratado, evite levantar bruscamente e consuma porções menores e mais frequentes. Exercícios devem ser acompanhados com atenção à tontura."
+        elif ps >= 180 or pd >= 120:
+            alerta_pa = "Crise Hipertensiva"
+            dica_pa = "DICA URGENTE: Valores criticamente altos. Procure atendimento médico imediato e suspenda os treinos até liberação médica."
+        elif ps >= 160 or pd >= 100:
+            alerta_pa = "Hipertensão Estágio 2"
+            dica_pa = "Dicas: Acompanhamento médico rigoroso é indispensável. Treinos precisam de controle rigoroso de carga, intervalo e respiração."
+        elif ps >= 140 or pd >= 90:
+            alerta_pa = "Hipertensão Estágio 1"
+            dica_pa = "Dicas: Monitore regularmente. Reduza o consumo de sódio e gerencie o estresse. Atividade física regular (aeróbica e força) ajuda no controle."
+        elif ps > 120 or pd > 80:
+            alerta_pa = "Elevada/Limítrofe"
+            dica_pa = "Dicas: Atenção aos fatores de risco. Adote uma alimentação balanceada e mantenha a consistência nos treinos para prevenir a hipertensão."
+        else:
+            alerta_pa = "Normotensão (Normal)"
+            dica_pa = "Dicas: Excelente! Continue com seus hábitos saudáveis e rotina de exercícios para manter o sistema cardiovascular protegido."
+
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(0, 6, "Pressão Arterial:", ln=True)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 6, f"PA: {pa_texto} - {alerta_pa}", ln=True)
+        if dica_pa:
+            pdf.set_font("Helvetica", "", 9)
+            pdf.multi_cell(0, 5, dica_pa)
+
     pdf.ln(6)
 
     # 4. Tabela de Exercícios (Agrupada por Divisão)
