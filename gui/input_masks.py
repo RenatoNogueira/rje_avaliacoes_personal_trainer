@@ -73,6 +73,17 @@ def format_time_value(raw: str) -> str:
     return d[:2] + ":" + d[2:]
 
 
+def format_altura_value(raw: str) -> str:
+    d = _digits(raw)[:3]
+    if len(d) <= 2:
+        return d
+    return d[0] + "." + d[1:]
+
+
+def format_int3_value(raw: str) -> str:
+    return _digits(raw)[:3]
+
+
 def add_calendar_to_entry(entry: tk.Entry) -> None:
     """Abre o seletor de data ao clicar no campo."""
     from .calendar_dialog import CalendarDialog
@@ -117,6 +128,10 @@ def bind_mask(entry: tk.Entry, kind: str) -> None:
             masked = format_date_br_value(val)
         elif kind == "time":
             masked = format_time_value(val)
+        elif kind == "altura":
+            masked = format_altura_value(val)
+        elif kind == "int3":
+            masked = format_int3_value(val)
         else:
             masked = val
         _apply(entry, masked)

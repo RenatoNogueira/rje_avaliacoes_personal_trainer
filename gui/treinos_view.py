@@ -15,6 +15,7 @@ class TreinosView(ctk.CTkFrame):
         self,
         master,
         professor_var: ctk.StringVar | None = None,
+        cref_var: ctk.StringVar | None = None,
         get_current_user=None,
     ) -> None:
         super().__init__(master)
@@ -22,6 +23,7 @@ class TreinosView(ctk.CTkFrame):
         self.selected_treino_id = None
         self.selected_exercicio_id = None
         self.professor_nome_var = professor_var or ctk.StringVar()
+        self.cref_var = cref_var or ctk.StringVar()
         self.get_current_user = get_current_user or (lambda: None)
 
         self.grid_rowconfigure(1, weight=1)
@@ -282,12 +284,13 @@ class TreinosView(ctk.CTkFrame):
         bg = _c("list_card_bg")
         hover = _c("list_card_hover")
         
-        card = ctk.CTkFrame(self.scroll_list_treinos, fg_color=bg, corner_radius=12)
-        card.pack(fill="x", pady=2, padx=5)
+        card = ctk.CTkFrame(self.scroll_list_treinos, fg_color=bg, corner_radius=8, height=65)
+        card.pack(fill="x", pady=2, padx=4)
+        card.pack_propagate(False)
 
         # Accent bar
-        accent = ctk.CTkFrame(card, width=4, fg_color=_c("card_treinos_accent"), corner_radius=2)
-        accent.pack(side="left", fill="y", padx=(10, 0), pady=6)
+        accent = ctk.CTkFrame(card, width=3, fg_color=_c("card_treinos_accent"), corner_radius=1)
+        accent.pack(side="left", fill="y", padx=(6, 0), pady=10)
 
         data_br = row["data_criacao"]
         try:
@@ -299,7 +302,7 @@ class TreinosView(ctk.CTkFrame):
 
         # Conteúdo
         content_frame = ctk.CTkFrame(card, fg_color="transparent")
-        content_frame.pack(side="left", fill="both", expand=True, padx=10, pady=6)
+        content_frame.pack(side="left", fill="both", expand=True, padx=8, pady=8)
         
         # Header do card: Nome do Treino
         header = ctk.CTkFrame(content_frame, fg_color="transparent")
@@ -311,17 +314,12 @@ class TreinosView(ctk.CTkFrame):
         lbl_data = ctk.CTkLabel(header, text=data_br, font=font_small(), text_color=_c("view_header_subtitle"))
         lbl_data.pack(side="right")
 
-        # Subtitle: Aluno
-        lbl_aluno = ctk.CTkLabel(content_frame, text=f"👤 {row['nome_aluno']}", font=font_subtitle(), anchor="w")
+        prof_nome = row["nome_criacao"] or row["username_criacao"] or ""
+        lbl_aluno = ctk.CTkLabel(content_frame, text=f"👤 {row['nome_aluno']} | 📋 Prof: {prof_nome}", font=font_subtitle(), anchor="w")
         lbl_aluno.pack(fill="x", pady=(2, 0))
 
-        # Profissional
-        prof_nome = row["nome_criacao"] or row["username_criacao"] or ""
-        lbl_prof = ctk.CTkLabel(content_frame, text=f"📋 Prof: {prof_nome}", font=font_small(), text_color="gray", anchor="w")
-        lbl_prof.pack(fill="x")
-
         # Bind events
-        for w in (card, content_frame, header, lbl_treino, lbl_data, lbl_aluno, lbl_prof):
+        for w in (card, content_frame, header, lbl_treino, lbl_data, lbl_aluno):
             w.bind("<Button-1>", lambda e, tid=row["id"]: self.load_treino_details(tid))
             
         bind_card_hover(card, bg, hover)
@@ -1011,11 +1009,13 @@ class TreinosView(ctk.CTkFrame):
         dados_treino = dict(treino)
         dados_aluno = dict(aluno)
         professor_nome = self.professor_nome_var.get().strip()
+        professor_cref = self.cref_var.get().strip()
 
         gerar_pdf_treino(
             dados_treino=dados_treino,
             dados_aluno=dados_aluno,
             exercicios=[dict(row) for row in exercicios_rows],
             professor_nome=professor_nome,
+            professor_cref=professor_cref,
             output_path=Path(file_path),
         )

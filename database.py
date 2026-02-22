@@ -206,6 +206,8 @@ class Database:
             self._ensure_column(cursor, "avaliacoes_fisicas", "massa_gorda", "REAL")
             self._ensure_column(cursor, "avaliacoes_fisicas", "ldl", "REAL")
             self._ensure_column(cursor, "avaliacoes_fisicas", "hdl", "REAL")
+            self._ensure_column(cursor, "avaliacoes_fisicas", "pressao_sistolica", "INTEGER")
+            self._ensure_column(cursor, "avaliacoes_fisicas", "pressao_diastolica", "INTEGER")
             self._ensure_column(cursor, "avaliacoes_fisicas", "foto_frente", "TEXT")
             self._ensure_column(cursor, "avaliacoes_fisicas", "foto_costas", "TEXT")
             self._ensure_column(cursor, "avaliacoes_fisicas", "foto_lateral_dir", "TEXT")

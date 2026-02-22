@@ -19,6 +19,7 @@ def _format_cpf(d: str) -> str:
 def gerar_pdf_agenda(
     data: str,
     agendamentos: Iterable[Mapping[str, object]],
+    professor_cref: str,
     output_path: Path,
 ) -> None:
     pdf = FPDF(orientation="P", unit="mm", format="A4")
@@ -60,7 +61,10 @@ def gerar_pdf_agenda(
     pdf.ln(4)
 
     pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 8, f"Data: {data or '-'}", ln=True)
+    text_data = f"Data: {data or '-'}"
+    if professor_cref:
+        text_data += f" | CREF: {professor_cref}"
+    pdf.cell(0, 8, text_data, ln=True)
     pdf.ln(4)
 
     col_horario = 25

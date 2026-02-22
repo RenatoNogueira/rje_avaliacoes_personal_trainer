@@ -195,29 +195,30 @@ class AlunosView(ctk.CTkFrame):
         bg = _c("list_card_bg")
         hover = _c("list_card_hover")
         
-        card = ctk.CTkFrame(self.scroll_list, fg_color=bg, corner_radius=12)
-        card.pack(fill="x", pady=2, padx=5)
+        card = ctk.CTkFrame(self.scroll_list, fg_color=bg, corner_radius=8, height=65)
+        card.pack(fill="x", pady=2, padx=4)
+        card.pack_propagate(False)
 
         # Accent bar lateral sutil
-        accent = ctk.CTkFrame(card, width=4, fg_color=_c("list_card_accent"), corner_radius=2)
-        accent.pack(side="left", fill="y", padx=(10, 0), pady=6)
+        accent = ctk.CTkFrame(card, width=3, fg_color=_c("list_card_accent"), corner_radius=1)
+        accent.pack(side="left", fill="y", padx=(6, 0), pady=10)
 
         # Conteúdo
         content_frame = ctk.CTkFrame(card, fg_color="transparent")
-        content_frame.pack(side="left", fill="both", expand=True, padx=10, pady=6)
+        content_frame.pack(side="left", fill="both", expand=True, padx=8, pady=8)
         
         # Foto (Miniatura Circular)
         foto_path = row["foto_perfil"]
-        lbl_foto = ctk.CTkLabel(content_frame, text="👤", width=50, height=50, fg_color="gray50", corner_radius=25)
+        lbl_foto = ctk.CTkLabel(content_frame, text="👤", width=40, height=40, font=ctk.CTkFont(size=18), fg_color="gray50", corner_radius=20)
         
         if foto_path:
             try:
                 from pathlib import Path
                 if Path(foto_path).exists():
-                    pil_img = create_circular_image(foto_path, (100, 100)) # Gera maior para renderizar melhor (Retina/HighDPI)
+                    pil_img = create_circular_image(foto_path, (80, 80))
                     if pil_img:
-                        ctk_img = ctk.CTkImage(pil_img, size=(50, 50))
-                        lbl_foto.configure(image=ctk_img, text="", fg_color="transparent") # Transparente para ver o corte
+                        ctk_img = ctk.CTkImage(pil_img, size=(40, 40))
+                        lbl_foto.configure(image=ctk_img, text="", fg_color="transparent")
             except Exception:
                 pass
         
@@ -225,14 +226,14 @@ class AlunosView(ctk.CTkFrame):
 
         # Info Frame
         info_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
-        info_frame.pack(side="left", fill="both", expand=True)
+        info_frame.pack(side="left", fill="x", expand=True)
 
         # Info
         tel = row["telefone"] or ""
         insta = row["instagram"] or ""
         
         # Header: Nome
-        lbl_nome = ctk.CTkLabel(info_frame, text=row["nome"], font=ctk.CTkFont(size=14, weight="bold"), anchor="w")
+        lbl_nome = ctk.CTkLabel(info_frame, text=row["nome"], font=ctk.CTkFont(size=13, weight="bold"), anchor="w", justify="left")
         lbl_nome.pack(fill="x")
         
         # Detalhes
@@ -245,7 +246,8 @@ class AlunosView(ctk.CTkFrame):
             text=" | ".join(details) if details else "Nenhum contato", 
             font=font_small(), 
             text_color=_c("view_header_subtitle"),
-            anchor="w"
+            anchor="w",
+            justify="left"
         )
         lbl_details.pack(fill="x")
 
@@ -359,11 +361,20 @@ class AlunosView(ctk.CTkFrame):
                         self.lbl_foto_preview.configure(image=ctk_img, text="", fg_color="transparent")
                         self.lbl_foto_preview._image_ref = ctk_img
                 else:
-                    self.lbl_foto_preview.configure(image=None, text="Arquivo\nnão encontrado", fg_color="gray30")
+                    self._clear_foto_preview("Arquivo\nnão encontrado")
             except Exception:
-                self.lbl_foto_preview.configure(image=None, text="Erro", fg_color="gray30")
+                self._clear_foto_preview("Erro")
         else:
-            self.lbl_foto_preview.configure(image=None, text="📷", fg_color="gray30")
+            self._clear_foto_preview("📷")
+
+    def _clear_foto_preview(self, text):
+        try:
+            from PIL import Image
+            empty_img = ctk.CTkImage(Image.new("RGBA", (1, 1), (0, 0, 0, 0)), size=(1, 1))
+            self.lbl_foto_preview.configure(image=empty_img, text=text, fg_color="gray30")
+            self.lbl_foto_preview._image_ref = empty_img
+        except Exception:
+            self.lbl_foto_preview.configure(image=None, text=text, fg_color="gray30")
 
     def on_salvar(self) -> None:
         nome = self.entry_nome.get().strip()

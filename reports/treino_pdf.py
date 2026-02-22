@@ -66,6 +66,7 @@ def gerar_pdf_treino(
     dados_aluno: dict[str, Any],
     exercicios: Iterable[dict[str, Any]],
     professor_nome: str,
+    professor_cref: str,
     output_path: Path,
 ) -> None:
     # 1. Carregar configurações de branding
@@ -114,7 +115,10 @@ def gerar_pdf_treino(
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(25, 6, "Professor(a):", align="L")
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 6, professor_nome or "-", align="L", ln=True)
+    prof_text = professor_nome or "-"
+    if professor_cref:
+        prof_text += f" (CREF: {professor_cref})"
+    pdf.cell(0, 6, prof_text, align="L", ln=True)
     
     # Linha 2: Objetivo e Data
     pdf.set_font("Helvetica", "B", 10)

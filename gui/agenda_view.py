@@ -241,13 +241,14 @@ class AgendaView(ctk.CTkFrame):
             bg = _c("ag_today_bg")
             hover = _c("ag_today_hover")
 
-        card = ctk.CTkFrame(self.scroll_list, fg_color=bg, corner_radius=12)
-        card.pack(fill="x", pady=2, padx=5)
+        card = ctk.CTkFrame(self.scroll_list, fg_color=bg, corner_radius=8, height=65)
+        card.pack(fill="x", pady=2, padx=4)
+        card.pack_propagate(False)
 
         # Accent bar lateral se for hoje
         if is_today:
-            accent = ctk.CTkFrame(card, width=4, fg_color=_c("card_agenda_accent"), corner_radius=2)
-            accent.pack(side="left", fill="y", padx=(10, 0), pady=6)
+            accent = ctk.CTkFrame(card, width=3, fg_color=_c("card_agenda_accent"), corner_radius=1)
+            accent.pack(side="left", fill="y", padx=(6, 0), pady=10)
 
         data_br = row["data"]
         try:
@@ -258,7 +259,7 @@ class AgendaView(ctk.CTkFrame):
         
         # Conteúdo
         content_frame = ctk.CTkFrame(card, fg_color="transparent")
-        content_frame.pack(side="left", fill="both", expand=True, padx=10, pady=6)
+        content_frame.pack(side="left", fill="both", expand=True, padx=8, pady=8)
         
         # Header do card: Hora e Status
         header = ctk.CTkFrame(content_frame, fg_color="transparent")
@@ -270,20 +271,18 @@ class AgendaView(ctk.CTkFrame):
         create_status_pill(header, row["status"])
 
         # Aluno e Tipo
-        lbl_aluno = ctk.CTkLabel(content_frame, text=row["nome_aluno"], font=ctk.CTkFont(size=15, weight="bold"), anchor="w")
-        lbl_aluno.pack(fill="x", pady=(4, 0))
+        lbl_aluno = ctk.CTkLabel(content_frame, text=row["nome_aluno"], font=ctk.CTkFont(size=14, weight="bold"), anchor="w")
+        lbl_aluno.pack(fill="x", pady=(2, 0))
 
         details_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
         details_frame.pack(fill="x")
         
-        lbl_tipo = ctk.CTkLabel(details_frame, text=f"📂 {row['tipo']}", font=font_small(), text_color=_c("view_header_subtitle"))
+        tipo_data = f"📂 {row['tipo']} | 📅 {data_br}" if not is_today else f"📂 {row['tipo']} | Hoje"
+        lbl_tipo = ctk.CTkLabel(details_frame, text=tipo_data, font=font_small(), text_color=_c("view_header_subtitle"))
         lbl_tipo.pack(side="left")
-        
-        lbl_data = ctk.CTkLabel(details_frame, text=f"📅 {data_br}", font=font_small(), text_color=_c("view_header_subtitle"))
-        lbl_data.pack(side="right")
 
         # Bind events
-        for w in (card, content_frame, header, lbl_hora, lbl_aluno, details_frame, lbl_tipo, lbl_data):
+        for w in (card, content_frame, header, lbl_hora, lbl_aluno, details_frame, lbl_tipo):
             w.bind("<Button-1>", lambda e, aid=row["id"]: self.load_agendamento_details(aid))
             
         bind_card_hover(card, bg, hover)
@@ -507,9 +506,28 @@ class AgendaView(ctk.CTkFrame):
         if not file_path:
             return
 
+        # Tenta obter CREF do usuário logado ou das configurações
+        professor_cref = ""
+        user = self.get_current_user() if self.get_current_user else None
+        if user:
+             professor_cref = user.get("cref") or ""
+        
+        if not professor_cref:
+            # Fallback para settings.json se houver
+            try:
+                import json
+                base_dir = Path(__file__).resolve().parent.parent
+                settings_path = base_dir / "data" / "settings.json"
+                if settings_path.exists():
+                    data = json.loads(settings_path.read_text(encoding="utf-8"))
+                    professor_cref = data.get("contato_cref") or ""
+            except Exception:
+                pass
+
         gerar_pdf_agenda(
             data=data_filtro,
             agendamentos=rows,
+            professor_cref=professor_cref,
             output_path=Path(file_path),
         )
 

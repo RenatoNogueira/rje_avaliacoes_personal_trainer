@@ -345,6 +345,7 @@ class Application(ctk.CTk):
             "logo_path": default_logo,
             "contato_email": "",
             "contato_telefone": "",
+            "contato_cref": "",
             "dashboard_refresh_seconds": 60,
         }
 
@@ -360,6 +361,7 @@ class Application(ctk.CTk):
         self.marca_nome_var = ctk.StringVar(value=defaults["marca_nome"])
         self.email_var = ctk.StringVar(value=defaults.get("contato_email", ""))
         self.telefone_var = ctk.StringVar(value=defaults.get("contato_telefone", ""))
+        self.cref_var = ctk.StringVar(value=defaults.get("contato_cref", ""))
         
         # Garante que use a logo padrão se a config estiver vazia
         self.logo_path = str(defaults["logo_path"] or default_logo)
@@ -381,6 +383,7 @@ class Application(ctk.CTk):
             "logo_path": self.logo_path,
             "contato_email": self.email_var.get().strip(),
             "contato_telefone": self.telefone_var.get().strip(),
+            "contato_cref": self.cref_var.get().strip(),
             "dashboard_refresh_seconds": int(self.dashboard_refresh_seconds_var.get() or 60),
         }
         try:
@@ -473,6 +476,7 @@ class Application(ctk.CTk):
         self._show_view(
             AvaliacoesView,
             professor_var=self.professor_nome_var,
+            cref_var=self.cref_var,
             get_current_user=lambda: self.current_user,
         )
 
@@ -480,6 +484,7 @@ class Application(ctk.CTk):
         self._show_view(
             TreinosView,
             professor_var=self.professor_nome_var,
+            cref_var=self.cref_var,
             get_current_user=lambda: self.current_user,
         )
 
@@ -501,17 +506,18 @@ class Application(ctk.CTk):
             marca_var=self.marca_nome_var,
             email_var=self.email_var,
             telefone_var=self.telefone_var,
+            cref_var=self.cref_var,
             get_logo_path=lambda: self.logo_path,
             set_branding=self._set_branding,
             current_user=self.current_user,
             on_update_profile=self._update_user_profile
         )
 
-    def _update_user_profile(self, user_id: int, foto_path: str, telefone: str) -> None:
+    def _update_user_profile(self, user_id: int, foto_path: str, telefone: str, cref: str) -> None:
         try:
             db.execute(
-                "UPDATE usuarios SET foto_perfil = ?, telefone = ? WHERE id = ?",
-                (foto_path, telefone, user_id),
+                "UPDATE usuarios SET foto_perfil = ?, telefone = ?, cref = ? WHERE id = ?",
+                (foto_path, telefone, cref, user_id),
                 commit=True
             )
             # Atualiza objeto current_user em memória
@@ -519,6 +525,7 @@ class Application(ctk.CTk):
                 self.current_user = dict(self.current_user) # copia
                 self.current_user["foto_perfil"] = foto_path
                 self.current_user["telefone"] = telefone
+                self.current_user["cref"] = cref
         except Exception as e:
             print(f"Erro ao atualizar perfil: {e}")
 
@@ -569,6 +576,11 @@ class Application(ctk.CTk):
             if not self.professor_nome_var.get().strip():
                 nome_prof = user_data.get("nome") or user_data.get("username") or ""
                 self.professor_nome_var.set(nome_prof)
+            
+            # Sincroniza CREF se ainda não estiver preenchido
+            if not self.cref_var.get().strip():
+                cref_user = user_data.get("cref") or ""
+                self.cref_var.set(cref_user)
 
             self._apply_branding_to_sidebar()
             
@@ -594,10 +606,11 @@ class Application(ctk.CTk):
         # Tenta aplicar ícone
         set_window_icon(self._login_window, getattr(self, "logo_path", None))
 
-    def _set_branding(self, logo_path: str, marca: str, email: str, telefone: str) -> None:
+    def _set_branding(self, logo_path: str, marca: str, email: str, telefone: str, cref: str) -> None:
         self.logo_path = logo_path or ""
         self.marca_nome_var.set(marca or "")
         self.email_var.set(email or "")
         self.telefone_var.set(telefone or "")
+        self.cref_var.set(cref or "")
         self._apply_branding_to_sidebar()
         self._save_settings()

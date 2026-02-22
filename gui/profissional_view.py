@@ -17,6 +17,7 @@ class ProfissionalView(ctk.CTkFrame):
         marca_var: ctk.StringVar,
         email_var: ctk.StringVar,
         telefone_var: ctk.StringVar,
+        cref_var: ctk.StringVar,
         get_logo_path,
         set_branding,
         current_user=None,
@@ -27,6 +28,7 @@ class ProfissionalView(ctk.CTkFrame):
         self.marca_var = marca_var
         self.email_var = email_var
         self.telefone_var = telefone_var
+        self.cref_var = cref_var
         self.get_logo_path = get_logo_path
         self.set_branding = set_branding
         # Converter Row para dict para permitir .get() e evitar erros
@@ -100,6 +102,9 @@ class ProfissionalView(ctk.CTkFrame):
         ctk.CTkLabel(self.contact_frame, text="📞").grid(row=1, column=0, padx=(0, 5), sticky="e")
         ctk.CTkLabel(self.contact_frame, textvariable=self.telefone_var, anchor="w").grid(row=1, column=1, sticky="ew")
 
+        ctk.CTkLabel(self.contact_frame, text="🆔").grid(row=2, column=0, padx=(0, 5), sticky="e")
+        ctk.CTkLabel(self.contact_frame, textvariable=self.cref_var, anchor="w").grid(row=2, column=1, sticky="ew")
+
         # Reload Preview Button
         create_action_button(
             self.left_panel,
@@ -159,6 +164,9 @@ class ProfissionalView(ctk.CTkFrame):
         self.entry_telefone = ctk.CTkEntry(self.form_container, textvariable=self.telefone_var)
         self.entry_telefone.grid(row=row, column=1, padx=10, pady=10, sticky="ew")
         bind_mask(self.entry_telefone, "tel")
+        
+        row += 1
+        self._add_form_row(row, "CREF:", self.cref_var)
         
         row += 1
         create_section_title(self.form_container, "Identidade da Marca").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
@@ -290,8 +298,9 @@ class ProfissionalView(ctk.CTkFrame):
 
         email = self.email_var.get().strip()
         telefone = self.telefone_var.get().strip()
+        cref = self.cref_var.get().strip()
         
-        self.set_branding(logo_target, marca, email, telefone)
+        self.set_branding(logo_target, marca, email, telefone, cref)
 
         # Atualiza foto de perfil e telefone do usuário logado
         if self.on_update_profile and self.current_user:
@@ -324,7 +333,8 @@ class ProfissionalView(ctk.CTkFrame):
                 self.on_update_profile(
                     user_id, 
                     final_foto_path,
-                    telefone
+                    telefone,
+                    cref
                 )
             except Exception as e:
                 messagebox.showerror("Erro", f"Erro ao atualizar perfil do usuário: {e}")

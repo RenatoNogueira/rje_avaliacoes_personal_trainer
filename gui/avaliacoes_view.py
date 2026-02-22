@@ -23,12 +23,14 @@ class AvaliacoesView(ctk.CTkFrame):
         self,
         master,
         professor_var: ctk.StringVar | None = None,
+        cref_var: ctk.StringVar | None = None,
         get_current_user=None,
     ) -> None:
         super().__init__(master)
 
         self.selected_id = None
         self.professor_nome_var = professor_var or ctk.StringVar()
+        self.cref_var = cref_var or ctk.StringVar()
         self.get_current_user = get_current_user or (lambda: None)
         
         
@@ -149,6 +151,7 @@ class AvaliacoesView(ctk.CTkFrame):
         )
         self.entry_altura = ctk.CTkEntry(self.scroll_ant)
         self.entry_altura.grid(row=1, column=1, padx=10, pady=5, sticky="ew")
+        bind_mask(self.entry_altura, "altura")
 
         imc_frame = ctk.CTkFrame(self.scroll_ant)
         imc_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
@@ -172,6 +175,19 @@ class AvaliacoesView(ctk.CTkFrame):
         )
         self.entry_hdl = ctk.CTkEntry(imc_frame, width=80)
         self.entry_hdl.grid(row=1, column=3, padx=(0, 5), pady=5, sticky="w")
+        
+        ctk.CTkLabel(imc_frame, text="PA Sist. (mmHg):").grid(
+            row=2, column=0, padx=(5, 5), pady=5, sticky="e"
+        )
+        self.entry_pressao_sistolica = ctk.CTkEntry(imc_frame, width=80)
+        self.entry_pressao_sistolica.grid(row=2, column=1, padx=(0, 5), pady=5, sticky="w")
+
+        ctk.CTkLabel(imc_frame, text="PA Diast. (mmHg):").grid(
+            row=2, column=2, padx=(5, 5), pady=5, sticky="e"
+        )
+        self.entry_pressao_diastolica = ctk.CTkEntry(imc_frame, width=80)
+        self.entry_pressao_diastolica.grid(row=2, column=3, padx=(0, 5), pady=5, sticky="w")
+
         self.label_ant_alertas = ctk.CTkLabel(
             imc_frame,
             text="",
@@ -186,7 +202,7 @@ class AvaliacoesView(ctk.CTkFrame):
             anchor="w"
         )
         self.label_ant_alertas.grid(
-            row=2,
+            row=3,
             column=0,
             columnspan=4,
             padx=5,
@@ -430,6 +446,8 @@ class AvaliacoesView(ctk.CTkFrame):
         self.entry_massa_magra.bind("<KeyRelease>", self.on_imc_change)
         self.entry_ldl.bind("<KeyRelease>", self.on_imc_change)
         self.entry_hdl.bind("<KeyRelease>", self.on_imc_change)
+        self.entry_pressao_sistolica.bind("<KeyRelease>", self.on_imc_change)
+        self.entry_pressao_diastolica.bind("<KeyRelease>", self.on_imc_change)
 
         self.load_alunos()
         self._load_usuarios_filtro()
@@ -780,12 +798,13 @@ class AvaliacoesView(ctk.CTkFrame):
         bg = _c("card_aval_bg")
         hover = _c("card_aval_hover")
         
-        card = ctk.CTkFrame(self.scroll_list, fg_color=bg, corner_radius=12)
-        card.pack(fill="x", pady=2, padx=5)
+        card = ctk.CTkFrame(self.scroll_list, fg_color=bg, corner_radius=8, height=65)
+        card.pack(fill="x", pady=2, padx=4)
+        card.pack_propagate(False)
 
         # Accent bar lateral
-        accent = ctk.CTkFrame(card, width=4, fg_color=_c("card_aval_accent"), corner_radius=2)
-        accent.pack(side="left", fill="y", padx=(10, 0), pady=6)
+        accent = ctk.CTkFrame(card, width=3, fg_color=_c("card_aval_accent"), corner_radius=1)
+        accent.pack(side="left", fill="y", padx=(6, 0), pady=10)
 
         data_br = row["data"]
         try:
@@ -805,7 +824,7 @@ class AvaliacoesView(ctk.CTkFrame):
 
         # Conteúdo
         content_frame = ctk.CTkFrame(card, fg_color="transparent")
-        content_frame.pack(side="left", fill="both", expand=True, padx=10, pady=6)
+        content_frame.pack(side="left", fill="both", expand=True, padx=8, pady=8)
         
         # Header do card: Nome e Data
         header = ctk.CTkFrame(content_frame, fg_color="transparent")
@@ -817,27 +836,25 @@ class AvaliacoesView(ctk.CTkFrame):
         lbl_data = ctk.CTkLabel(header, text=data_br, font=font_small(), text_color=_c("view_header_subtitle"))
         lbl_data.pack(side="right")
 
-        # Métricas e Badges
+        # Métricas, Badges & Profissional
         details_row = ctk.CTkFrame(content_frame, fg_color="transparent")
-        details_row.pack(fill="x", pady=(4, 0))
+        details_row.pack(fill="x", pady=(2, 0))
         
         metrics = []
         if peso: metrics.append(f"⚖️ {peso}kg")
         if row.get("percentual_gordura"): metrics.append(f"🔥 {row['percentual_gordura']}% G")
         
-        lbl_metrics = ctk.CTkLabel(details_row, text="  |  ".join(metrics), font=font_small(), text_color=_c("view_header_subtitle"))
+        prof_nome = row["nome_criacao"] or row["username_criacao"] or "N/A"
+        metrics.append(f"👤 Prof: {prof_nome}")
+        
+        lbl_metrics = ctk.CTkLabel(details_row, text=" | ".join(metrics), font=font_small(), text_color="gray")
         lbl_metrics.pack(side="left")
 
         if imc_text:
             create_info_badge(details_row, imc_text).pack(side="right")
 
-        # Profissional
-        prof_nome = row["nome_criacao"] or row["username_criacao"] or "N/A"
-        lbl_prof = ctk.CTkLabel(content_frame, text=f"👤 Prof: {prof_nome}", font=font_small(), text_color="gray", anchor="w")
-        lbl_prof.pack(fill="x", pady=(2, 0))
-
         # Bind events
-        for w in (card, content_frame, header, lbl_nome, lbl_data, details_row, lbl_metrics, lbl_prof):
+        for w in (card, content_frame, header, lbl_nome, lbl_data, details_row, lbl_metrics):
             w.bind("<Button-1>", lambda e, aid=row["id"]: self.load_avaliacao_details(aid))
             
         bind_card_hover(card, bg, hover)
@@ -852,7 +869,7 @@ class AvaliacoesView(ctk.CTkFrame):
                    af.dobras_cutaneas, af.perimetros, af.anamnese,
                    af.historico_saude, af.estilo_vida, af.metas,
                    af.postura, af.funcional_mobilidade, af.cardio, af.forca_resistencia,
-                   af.ldl, af.hdl,
+                   af.ldl, af.hdl, af.pressao_sistolica, af.pressao_diastolica,
                    af.foto_frente, af.foto_costas, af.foto_lateral_dir, af.foto_lateral_esq,
                    uc.username AS username_criacao, uc.nome AS nome_criacao,
                    uu.username AS username_atualizacao, uu.nome AS nome_atualizacao
@@ -908,6 +925,14 @@ class AvaliacoesView(ctk.CTkFrame):
         self.entry_hdl.delete(0, "end")
         if "hdl" in row.keys() and row["hdl"] is not None:
             self.entry_hdl.insert(0, str(row["hdl"]))
+
+        self.entry_pressao_sistolica.delete(0, "end")
+        if "pressao_sistolica" in row.keys() and row["pressao_sistolica"] is not None:
+            self.entry_pressao_sistolica.insert(0, str(row["pressao_sistolica"]))
+
+        self.entry_pressao_diastolica.delete(0, "end")
+        if "pressao_diastolica" in row.keys() and row["pressao_diastolica"] is not None:
+            self.entry_pressao_diastolica.insert(0, str(row["pressao_diastolica"]))
 
         self.text_dobras.configure(state="normal")
         self.text_dobras.delete("1.0", "end")
@@ -1008,6 +1033,8 @@ class AvaliacoesView(ctk.CTkFrame):
         self.entry_massa_gorda.delete(0, "end")
         self.entry_ldl.delete(0, "end")
         self.entry_hdl.delete(0, "end")
+        self.entry_pressao_sistolica.delete(0, "end")
+        self.entry_pressao_diastolica.delete(0, "end")
         self.label_ant_alertas.configure(
             text="",
             text_color="gray",
@@ -1107,6 +1134,10 @@ class AvaliacoesView(ctk.CTkFrame):
         massa_magra_val = to_float(massa_magra_str) if massa_magra_str else None
         ldl_val = to_float(ldl_str) if ldl_str else None
         hdl_val = to_float(hdl_str) if hdl_str else None
+        psist_str = self.entry_pressao_sistolica.get().strip()
+        pdiast_str = self.entry_pressao_diastolica.get().strip()
+        psist_val = to_float(psist_str) if psist_str else None
+        pdiast_val = to_float(pdiast_str) if pdiast_str else None
 
         if not peso or not altura or altura <= 0:
             self.label_imc.configure(text="IMC: -")
@@ -1140,6 +1171,24 @@ class AvaliacoesView(ctk.CTkFrame):
         if hdl_val is not None and hdl_val < 40:
             alertas.append("HDL baixo")
 
+        if psist_val is not None or pdiast_val is not None:
+            ps = psist_val or 0
+            pd = pdiast_val or 0
+            
+            if (ps > 0 and ps < 90) or (pd > 0 and pd < 60):
+                alertas.append("Hipotensão (Pressão Baixa)")
+            elif ps >= 180 or pd >= 120:
+                alertas.append("Crise Hipertensiva")
+            elif ps >= 160 or pd >= 100:
+                alertas.append("Hipertensão Estágio 2")
+            elif ps >= 140 or pd >= 90:
+                alertas.append("Hipertensão Estágio 1")
+            elif ps > 120 or pd > 80:
+                alertas.append("Elevada/Limítrofe")
+            elif ps > 0 and pd > 0:
+                # Normal (<= 120 e <= 80) doesn't need an alert in the UI, just in the PDF
+                pass
+
         partes = []
         if massa_magra_val is not None:
             partes.append(f"Massa magra: {massa_magra_val:.1f} kg")
@@ -1152,14 +1201,14 @@ class AvaliacoesView(ctk.CTkFrame):
         
         if alertas:
             if texto_alertas:
-                texto_alertas += "\n"
-            texto_alertas += "⚠️ " + "; ".join(alertas)
+                texto_alertas += "\n\n"
+            texto_alertas += "⚠️ ATENÇÃO:\n" + "\n".join([f"• {a}" for a in alertas])
 
         if texto_alertas:
             self.label_ant_alertas.configure(
                 text=texto_alertas,
-                text_color="#ffecec",
-                fg_color="#b00020",
+                text_color="#ffecec" if alertas else "gray",
+                fg_color="#b00020" if alertas else "transparent",
             )
         else:
             self.label_ant_alertas.configure(
@@ -1205,6 +1254,8 @@ class AvaliacoesView(ctk.CTkFrame):
         massa_gorda = parse_float(self.entry_massa_gorda.get())
         ldl = parse_float(self.entry_ldl.get())
         hdl = parse_float(self.entry_hdl.get())
+        pressao_sistolica = parse_float(self.entry_pressao_sistolica.get())
+        pressao_diastolica = parse_float(self.entry_pressao_diastolica.get())
 
         if peso_str.strip() and peso is None:
             messagebox.showwarning("Avaliações", "Peso inválido.")
@@ -1273,10 +1324,10 @@ class AvaliacoesView(ctk.CTkFrame):
                      dobras_cutaneas, perimetros, anamnese,
                      historico_saude, estilo_vida, metas,
                      postura, funcional_mobilidade, cardio, forca_resistencia,
-                     ldl, hdl,
+                     ldl, hdl, pressao_sistolica, pressao_diastolica,
                      foto_frente, foto_costas, foto_lateral_dir, foto_lateral_esq,
                      id_usuario_criacao, id_usuario_atualizacao)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     id_aluno,
@@ -1298,6 +1349,8 @@ class AvaliacoesView(ctk.CTkFrame):
                     forca,
                     ldl,
                     hdl,
+                    pressao_sistolica,
+                    pressao_diastolica,
                     foto_frente,
                     foto_costas,
                     foto_lateral_dir,
@@ -1316,7 +1369,7 @@ class AvaliacoesView(ctk.CTkFrame):
                     dobras_cutaneas = ?, perimetros = ?, anamnese = ?,
                     historico_saude = ?, estilo_vida = ?, metas = ?,
                     postura = ?, funcional_mobilidade = ?, cardio = ?, forca_resistencia = ?,
-                    ldl = ?, hdl = ?,
+                    ldl = ?, hdl = ?, pressao_sistolica = ?, pressao_diastolica = ?,
                     foto_frente = ?, foto_costas = ?, foto_lateral_dir = ?, foto_lateral_esq = ?,
                     id_usuario_atualizacao = ?
                 WHERE id = ?
@@ -1341,6 +1394,8 @@ class AvaliacoesView(ctk.CTkFrame):
                     forca,
                     ldl,
                     hdl,
+                    pressao_sistolica,
+                    pressao_diastolica,
                     foto_frente,
                     foto_costas,
                     foto_lateral_dir,
@@ -1424,11 +1479,13 @@ class AvaliacoesView(ctk.CTkFrame):
         dados_avaliacao = dict(avaliacao)
         dados_aluno = dict(aluno)
         professor_nome = self.professor_nome_var.get().strip()
+        professor_cref = self.cref_var.get().strip()
 
         gerar_pdf_avaliacao(
             dados_avaliacao=dados_avaliacao,
             dados_aluno=dados_aluno,
             professor_nome=professor_nome,
+            professor_cref=professor_cref,
             output_path=Path(file_path),
         )
 
