@@ -11,9 +11,13 @@ except ImportError:
 
 from database import db  # noqa: F401
 from gui import Application
+from utils.self_installer import SelfInstaller
 
 
 def main() -> None:
+    # Gerencia auto-instalação
+    SelfInstaller.run()
+    
     app = Application()
     app.mainloop()
 

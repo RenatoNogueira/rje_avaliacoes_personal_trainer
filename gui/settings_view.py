@@ -5,7 +5,7 @@ from tkinter import filedialog, messagebox
 
 from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_empty_state, create_section_title, bind_card_hover
 from database import db
-from .utils import setup_enter_navigation
+from .utils import setup_enter_navigation, delete_files_with_prefix
 from utils.image_utils import create_circular_image
 
 
@@ -455,6 +455,14 @@ class SettingsView(ctk.CTkFrame):
             # Se houver constraints de FK, pode falhar ou precisar de cascade.
             # Vamos assumir que se falhar, avisamos.
             
+            # Cleanup physical files (profile photo)
+            from pathlib import Path
+            base_dir = Path(__file__).resolve().parent.parent
+            usuarios_media_dir = base_dir / "media" / "usuarios"
+            
+            # Delete user photos (pattern: user_{id}_*)
+            delete_files_with_prefix(usuarios_media_dir, f"user_{self.selected_user_id}_")
+
             _db.execute(
                 "DELETE FROM usuarios WHERE id = ?",
                 (self.selected_user_id,),

@@ -226,3 +226,38 @@ def setup_enter_navigation(parent):
             widget.bind("<Return>", focus_next)
         except Exception:
             pass
+
+def delete_folder_recursive(path):
+    """
+    Remove uma pasta e todo o seu conteúdo recursivamente.
+    """
+    import shutil
+    from pathlib import Path
+    try:
+        p = Path(path)
+        if p.exists() and p.is_dir():
+            shutil.rmtree(p)
+            return True
+    except Exception as e:
+        print(f"Erro ao remover pasta {path}: {e}")
+    return False
+
+def delete_files_with_prefix(directory, prefix):
+    """
+    Remove todos os arquivos em um diretório que começam com um determinado prefixo.
+    """
+    from pathlib import Path
+    try:
+        dir_path = Path(directory)
+        if not dir_path.exists() or not dir_path.is_dir():
+            return False
+        
+        deleted_count = 0
+        for item in dir_path.iterdir():
+            if item.is_file() and item.name.startswith(prefix):
+                item.unlink()
+                deleted_count += 1
+        return deleted_count > 0
+    except Exception as e:
+        print(f"Erro ao remover arquivos com prefixo {prefix} em {directory}: {e}")
+    return False

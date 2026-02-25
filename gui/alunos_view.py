@@ -4,7 +4,7 @@ from tkinter import messagebox
 import re
 import customtkinter as ctk
 from .input_masks import bind_mask, is_valid_cpf, is_valid_cep, format_cpf_value, format_cep_value, only_digits
-from .utils import setup_enter_navigation, create_tooltip, show_toast
+from .utils import setup_enter_navigation, create_tooltip, show_toast, delete_folder_recursive
 
 from database import db
 
@@ -505,6 +505,19 @@ class AlunosView(ctk.CTkFrame):
         self.after(500, self._confirm_excluir)
 
     def _confirm_excluir(self):
+        # Cleanup physical files before deleting from DB if needed, 
+        # or after if we have the ID. We have self.selected_id.
+        import os
+        from pathlib import Path
+        
+        # Determine base directory
+        base_dir = Path(__file__).resolve().parent.parent
+        aluno_media_dir = base_dir / "media" / "avaliacoes" / str(self.selected_id)
+        
+        # Delete evaluation photos folder
+        delete_folder_recursive(aluno_media_dir)
+        
+        # Finally delete from database
         db.execute(
             "DELETE FROM alunos WHERE id = ?",
             (self.selected_id,),
