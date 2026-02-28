@@ -12,7 +12,7 @@ from .treinos_view import TreinosView
 from .settings_view import SettingsView
 from .login_dialog import LoginDialog
 from .about_dialog import AboutDialog
-from .theme import _c, font_body, font_subtitle, font_title, create_view_header
+from .theme import _c, font_body, font_subtitle, font_title, create_view_header, set_accent_color
 from .utils import create_tooltip, set_window_icon
 from utils.updater import Updater
 
@@ -54,7 +54,25 @@ class Application(ctk.CTk):
 
     def _on_auto_check_update(self, has_update: bool) -> None:
         if has_update:
-            self.after(0, lambda: self.btn_update_avail.grid(row=0, column=1, sticky="e", padx=5))
+            self.after(0, self._show_update_alert)
+
+    def _show_update_alert(self) -> None:
+        self.btn_update_avail.grid(row=0, column=1, sticky="e", padx=5)
+        self._blink_update_button()
+
+    def _blink_update_button(self) -> None:
+        if not hasattr(self, "btn_update_avail") or not self.btn_update_avail.winfo_exists():
+            return
+            
+        if self.update_blink_state:
+            self.btn_update_avail.configure(fg_color="#f39c12")
+        else:
+            self.btn_update_avail.configure(fg_color="#e67e22") # Um tom um pouco diferente ou transparente
+            # Se preferir que suma e apareça (mais chamativo):
+            # self.btn_update_avail.configure(text_color="white" if self.update_blink_state else "#f39c12")
+            
+        self.update_blink_state = not self.update_blink_state
+        self.after(600, self._blink_update_button)
 
     def _on_update_click(self) -> None:
         from tkinter import messagebox
@@ -89,18 +107,20 @@ class Application(ctk.CTk):
         )
         self.btn_menu.grid(row=0, column=0, sticky="w")
 
-        # Botão Update (Oculto inicialmente)
+        # Botão Update (Oculto inicialmente, agora como texto de alerta)
         self.btn_update_avail = ctk.CTkButton(
             self.header_frame,
-            text="⬇️",
-            width=30,
-            height=30,
+            text="▲ Atualizar",
+            width=80,
+            height=28,
             fg_color="#f39c12",
             hover_color="#d35400",
             text_color="white",
-            font=ctk.CTkFont(size=16),
-            command=self._on_update_click
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._on_update_click,
+            corner_radius=6
         )
+        self.update_blink_state = True
         # Grid será feito no callback se houver update
         create_tooltip(self.btn_update_avail, "Nova atualização disponível!")
 
@@ -346,9 +366,10 @@ class Application(ctk.CTk):
             "contato_email": "",
             "contato_telefone": "",
             "contato_cref": "",
+            "cidade": "",  # Empty triggers auto-detection
+            "accent_color": "", # Empty = default theme
             "dashboard_refresh_seconds": 60,
         }
-
         if self._settings_path.exists():
             try:
                 with self._settings_path.open("r", encoding="utf-8") as f:
@@ -362,6 +383,12 @@ class Application(ctk.CTk):
         self.email_var = ctk.StringVar(value=defaults.get("contato_email", ""))
         self.telefone_var = ctk.StringVar(value=defaults.get("contato_telefone", ""))
         self.cref_var = ctk.StringVar(value=defaults.get("contato_cref", ""))
+        self.cidade_var = ctk.StringVar(value=defaults.get("cidade", ""))
+        self.accent_color_var = ctk.StringVar(value=defaults.get("accent_color", ""))
+        
+        # Aplica a cor de destaque ao carregar
+        if self.accent_color_var.get():
+            set_accent_color(self.accent_color_var.get())
         
         # Garante que use a logo padrão se a config estiver vazia
         self.logo_path = str(defaults["logo_path"] or default_logo)
@@ -384,15 +411,28 @@ class Application(ctk.CTk):
             "contato_email": self.email_var.get().strip(),
             "contato_telefone": self.telefone_var.get().strip(),
             "contato_cref": self.cref_var.get().strip(),
+            "cidade": self.cidade_var.get().strip(),
+            "accent_color": self.accent_color_var.get().strip(),
             "dashboard_refresh_seconds": int(self.dashboard_refresh_seconds_var.get() or 60),
         }
         try:
             with self._settings_path.open("w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+            
+            # Também salva no banco de dados para o usuário atual, se logado
+            if self.current_user and "id" in self.current_user:
+                db.execute(
+                    "UPDATE usuarios SET cidade = ? WHERE id = ?",
+                    (data["cidade"], int(self.current_user["id"])),
+                    commit=True
+                )
+                # Atualiza objeto em memória
+                self.current_user["cidade"] = data["cidade"]
+        except Exception as e:
+            print(f"Erro ao salvar configurações: {e}")
 
     def logout(self) -> None:
+        self._save_settings()
         # Fecha a view atual
         if self.current_view:
             self.current_view.destroy()
@@ -464,6 +504,7 @@ class Application(ctk.CTk):
             get_refresh_seconds=lambda: max(
                 0, int(self.dashboard_refresh_seconds_var.get() or 60)
             ),
+            cidade_var=self.cidade_var,
         )
 
     def show_alunos(self) -> None:
@@ -495,6 +536,8 @@ class Application(ctk.CTk):
             appearance_var=self.appearance_mode_var,
             color_theme_var=self.color_theme_var,
             refresh_var=self.dashboard_refresh_seconds_var,
+            cidade_var=self.cidade_var,
+            accent_color_var=self.accent_color_var,
             current_user=self.current_user,
         )
 
@@ -510,14 +553,16 @@ class Application(ctk.CTk):
             get_logo_path=lambda: self.logo_path,
             set_branding=self._set_branding,
             current_user=self.current_user,
-            on_update_profile=self._update_user_profile
+            on_update_profile=self._update_user_profile,
+            cidade_var=self.cidade_var,
+            accent_color_var=self.accent_color_var
         )
 
     def _update_user_profile(self, user_id: int, foto_path: str, telefone: str, cref: str) -> None:
         try:
             db.execute(
-                "UPDATE usuarios SET foto_perfil = ?, telefone = ?, cref = ? WHERE id = ?",
-                (foto_path, telefone, cref, user_id),
+                "UPDATE usuarios SET foto_perfil = ?, telefone = ?, cref = ?, cidade = ? WHERE id = ?",
+                (foto_path, telefone, cref, self.cidade_var.get(), user_id),
                 commit=True
             )
             # Atualiza objeto current_user em memória
@@ -526,6 +571,7 @@ class Application(ctk.CTk):
                 self.current_user["foto_perfil"] = foto_path
                 self.current_user["telefone"] = telefone
                 self.current_user["cref"] = cref
+                self.current_user["cidade"] = self.cidade_var.get()
         except Exception as e:
             print(f"Erro ao atualizar perfil: {e}")
 
@@ -581,6 +627,14 @@ class Application(ctk.CTk):
             if not self.cref_var.get().strip():
                 cref_user = user_data.get("cref") or ""
                 self.cref_var.set(cref_user)
+            
+            # Sincroniza cidade do usuário (preferência individual)
+            cidade_user = user_data.get("cidade") or ""
+            if cidade_user:
+                self.cidade_var.set(cidade_user)
+            elif not self.cidade_var.get().strip():
+                # Se ambos vazios, deixamos vazio para auto-detecção
+                pass
 
             self._apply_branding_to_sidebar()
             
@@ -606,11 +660,15 @@ class Application(ctk.CTk):
         # Tenta aplicar ícone
         set_window_icon(self._login_window, getattr(self, "logo_path", None))
 
-    def _set_branding(self, logo_path: str, marca: str, email: str, telefone: str, cref: str) -> None:
+    def _set_branding(self, logo_path: str, marca: str, email: str, telefone: str, cref: str, accent_color: str = None) -> None:
         self.logo_path = logo_path or ""
         self.marca_nome_var.set(marca or "")
         self.email_var.set(email or "")
         self.telefone_var.set(telefone or "")
         self.cref_var.set(cref or "")
+        if accent_color is not None:
+            self.accent_color_var.set(accent_color)
+            set_accent_color(accent_color)
+        self.cidade_var.set(self.cidade_var.get()) # Keeps current city if not passed
         self._apply_branding_to_sidebar()
         self._save_settings()

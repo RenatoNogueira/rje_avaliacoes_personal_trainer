@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 21, 0),
-    prodvers=(1, 0, 21, 0),
+    filevers=(1, 0, 23, 0),
+    prodvers=(1, 0, 23, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x4,
@@ -16,12 +16,12 @@ VSVersionInfo(
         '040904B0',
         [StringStruct('CompanyName', 'RJE Avaliações'),
         StringStruct('FileDescription', 'RJE Avaliações - Sistema de Avaliação Física'),
-        StringStruct('FileVersion', '1.0.21'),
+        StringStruct('FileVersion', '1.0.23'),
         StringStruct('InternalName', 'RJE_Avaliacoes'),
         StringStruct('LegalCopyright', 'Copyright 2026 RJE'),
         StringStruct('OriginalFilename', 'RJE_Avaliacoes.exe'),
         StringStruct('ProductName', 'RJE Avaliações'),
-        StringStruct('ProductVersion', '1.0.21')])
+        StringStruct('ProductVersion', '1.0.23')])
       ]), 
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]

@@ -1,6 +1,9 @@
 import datetime
 import customtkinter as ctk
+import requests
+import threading
 from database import db
+from utils.geo_utils import get_current_city
 
 
 # ────────────────────────────── Paleta de cores ──────────────────────────────
@@ -80,9 +83,17 @@ def _saudacao() -> tuple[str, str]:
 
 
 class DashboardView(ctk.CTkFrame):
-    def __init__(self, master, get_refresh_seconds=None) -> None:
+    def __init__(self, master, get_refresh_seconds=None, cidade_var=None) -> None:
         super().__init__(master)
         self.get_refresh_seconds = get_refresh_seconds or (lambda: 60)
+        self.cidade_var = cidade_var
+        self.weather_data = None
+        self.api_key = "05ccf28850c068aa559dc33c5f4cac4e"
+        
+        # Variáveis para animação
+        self.weather_pulse_val = 24
+        self.weather_pulse_dir = 1
+        self._animate_weather()
 
         # Layout Principal
         self.grid_rowconfigure(3, weight=1)
@@ -101,6 +112,25 @@ class DashboardView(ctk.CTkFrame):
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, padx=28, pady=(28, 6), sticky="ew")
         header.grid_columnconfigure(1, weight=1)
+        
+        # Coluna do meio: Previsão do Tempo
+        self.weather_frame = ctk.CTkFrame(header, fg_color="transparent")
+        self.weather_frame.grid(row=0, column=1, sticky="w", padx=(40, 0))
+        
+        self.weather_icon_lbl = ctk.CTkLabel(
+            self.weather_frame, text="", font=ctk.CTkFont(size=24)
+        )
+        self.weather_icon_lbl.pack(side="left", padx=(0, 5))
+        
+        self.weather_temp_lbl = ctk.CTkLabel(
+            self.weather_frame, text="Carregando clima...", font=ctk.CTkFont(size=14, weight="bold")
+        )
+        self.weather_temp_lbl.pack(side="left")
+        
+        self.weather_desc_lbl = ctk.CTkLabel(
+            self.weather_frame, text="", font=ctk.CTkFont(size=12), text_color=_c("subtitle_text")
+        )
+        self.weather_desc_lbl.pack(side="left", padx=(8, 0))
 
         # Coluna esquerda: saudação + data
         info = ctk.CTkFrame(header, fg_color="transparent")
@@ -554,6 +584,10 @@ class DashboardView(ctk.CTkFrame):
 
     # ═══════════════════════════ REFRESH DATA ═════════════════════════════
     def refresh_data(self) -> None:
+        # Busca clima em thread separada
+        if self.cidade_var:
+            threading.Thread(target=self._fetch_weather, daemon=True).start()
+
         today = datetime.date.today()
         today_iso = today.isoformat()
         current_month = today.strftime("%m")
@@ -674,3 +708,74 @@ class DashboardView(ctk.CTkFrame):
 
         if hasattr(self, "label_media_idade"):
             self.label_media_idade.configure(text=f"Média de Idade: {avg_age} anos")
+
+    def _fetch_weather(self):
+        cidade = None
+        if self.cidade_var and self.cidade_var.get():
+            cidade = self.cidade_var.get()
+        else:
+            # Tenta detectar automaticamente
+            cidade = get_current_city()
+            
+        if not cidade:
+            self.after(0, lambda: self.weather_temp_lbl.configure(text="Localização não detectada"))
+            return
+            
+        try:
+            url = f"http://api.openweathermap.org/data/2.5/weather?q={cidade}&appid={self.api_key}&units=metric&lang=pt_br"
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                temp = int(data["main"]["temp"])
+                desc = data["weather"][0]["description"].capitalize()
+                icon_code = data["weather"][0]["icon"]
+                
+                # Mapeamento simples de ícones para emojis
+                emoji_map = {
+                    "01d": "☀️", "01n": "🌙",
+                    "02d": "🌤️", "02n": "☁️",
+                    "03d": "☁️", "03n": "☁️",
+                    "04d": "☁️", "04n": "☁️",
+                    "09d": "🌦️", "09n": "🌧️",
+                    "10d": "🌧️", "10n": "🌧️",
+                    "11d": "⛈️", "11n": "⛈️",
+                    "13d": "❄️", "13n": "❄️",
+                    "50d": "🌫️", "50n": "🌫️",
+                }
+                emoji = emoji_map.get(icon_code, "🌤️")
+                
+                # Agenda atualização da UI na thread principal
+                self.after(0, lambda: self._update_weather_ui(temp, desc, emoji, cidade))
+            else:
+                self.after(0, lambda: self.weather_temp_lbl.configure(text="Clima indisponível"))
+        except Exception:
+            self.after(0, lambda: self.weather_temp_lbl.configure(text="Erro ao carregar clima"))
+
+    def _update_weather_ui(self, temp, desc, emoji, cidade):
+        if hasattr(self, "weather_temp_lbl"):
+            self.weather_temp_lbl.configure(text=f"{temp}°C em {cidade}")
+        if hasattr(self, "weather_desc_lbl"):
+            self.weather_desc_lbl.configure(text=f"• {desc}")
+        if hasattr(self, "weather_icon_lbl"):
+            self.weather_icon_lbl.configure(text=emoji)
+
+    def _animate_weather(self):
+        """Micro-animação de pulsação para o ícone do clima"""
+        if not hasattr(self, "weather_icon_lbl") or not self.weather_icon_lbl.winfo_exists():
+            return
+            
+        # Altera o tamanho da fonte levemente para criar efeito de pulso
+        current_size = self.weather_pulse_val
+        if current_size >= 28:
+            self.weather_pulse_dir = -0.5
+        elif current_size <= 22:
+            self.weather_pulse_dir = 0.5
+            
+        self.weather_pulse_val += self.weather_pulse_dir
+        
+        try:
+            self.weather_icon_lbl.configure(font=ctk.CTkFont(size=int(self.weather_pulse_val)))
+        except Exception:
+            pass
+            
+        self.after(50, self._animate_weather)

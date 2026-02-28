@@ -227,6 +227,7 @@ class Database:
             self._ensure_column(cursor, "alunos", "instagram", "TEXT")
             self._ensure_column(cursor, "usuarios", "foto_perfil", "TEXT")
             self._ensure_column(cursor, "usuarios", "telefone", "TEXT")
+            self._ensure_column(cursor, "usuarios", "cidade", "TEXT")
 
             row = cursor.execute(
                 "SELECT COUNT(*) AS total FROM exercicios_catalogo"

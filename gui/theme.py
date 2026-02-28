@@ -103,9 +103,39 @@ COLORS = {
 }
 
 
+# Dicionário de overrides (pode ser preenchido em tempo de execução)
+COLOR_OVERRIDES = {}
+
+
+def set_accent_color(hex_color: str):
+    """
+    Define uma cor de destaque customizada para o sistema.
+    Atualiza as chaves que devem seguir a cor da marca do usuário.
+    """
+    if not hex_color:
+        COLOR_OVERRIDES.clear()
+        return
+
+    # Mapeia as chaves que devem ser afetadas pela cor customizada
+    accent_keys = [
+        "card_alunos_accent", "card_agenda_accent", "card_aval_accent", 
+        "card_treinos_accent", "btn_save", "btn_pdf", "list_card_accent",
+        "section_accent", "input_border_focus", "login_btn"
+    ]
+    
+    for key in accent_keys:
+        COLOR_OVERRIDES[key] = (hex_color, hex_color)
+    
+    # Adiciona versões mais escuras/claras para hover se necessário
+    # Por enquanto, usaremos a mesma cor para simplificar ou uma variação fixa
+    hover_keys = ["btn_save_hover", "btn_pdf_hover", "login_btn_hover"]
+    for key in hover_keys:
+        COLOR_OVERRIDES[key] = (hex_color, hex_color)
+
+
 def _c(key: str) -> tuple:
-    """Retorna a tupla de cor (light, dark) para a chave informada."""
-    return COLORS[key]
+    """Retorna a tupla de cor (light, dark) para a chave informada, considerando overrides."""
+    return COLOR_OVERRIDES.get(key, COLORS[key])
 
 
 # ──────────────────────────── Presets de Fontes ───────────────────────────────

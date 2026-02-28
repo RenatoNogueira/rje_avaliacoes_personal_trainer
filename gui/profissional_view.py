@@ -21,7 +21,9 @@ class ProfissionalView(ctk.CTkFrame):
         get_logo_path,
         set_branding,
         current_user=None,
-        on_update_profile=None
+        on_update_profile=None,
+        cidade_var=None,
+        accent_color_var=None
     ) -> None:
         super().__init__(master)
         self.professor_var = professor_var
@@ -34,6 +36,8 @@ class ProfissionalView(ctk.CTkFrame):
         # Converter Row para dict para permitir .get() e evitar erros
         self.current_user = dict(current_user) if current_user else None
         self.on_update_profile = on_update_profile
+        self.cidade_var = cidade_var
+        self.accent_color_var = accent_color_var
         self.selected_logo_path: str | None = None
         self.foto_perfil_path: str | None = self.current_user.get("foto_perfil") if self.current_user else None
 

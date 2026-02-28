@@ -5,7 +5,8 @@ from tkinter import filedialog, messagebox
 
 from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_empty_state, create_section_title, bind_card_hover
 from database import db
-from .utils import setup_enter_navigation, delete_files_with_prefix
+from .utils import setup_enter_navigation, delete_files_with_prefix, create_tooltip
+from utils.geo_utils import get_current_city
 from utils.image_utils import create_circular_image
 
 
@@ -17,6 +18,8 @@ class SettingsView(ctk.CTkFrame):
         appearance_var: ctk.StringVar,
         color_theme_var: ctk.StringVar,
         refresh_var: ctk.StringVar,
+        cidade_var: ctk.StringVar,
+        accent_color_var: ctk.StringVar,
         current_user: dict | None = None,
     ) -> None:
         super().__init__(master)
@@ -25,6 +28,8 @@ class SettingsView(ctk.CTkFrame):
         self.appearance_var = appearance_var
         self.color_theme_var = color_theme_var
         self.refresh_var = refresh_var
+        self.cidade_var = cidade_var
+        self.accent_color_var = accent_color_var
         self.current_user = current_user
 
         self.grid_rowconfigure(1, weight=1)
@@ -65,6 +70,20 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkLabel(scroll_geral, text="Auto-atualização Dashboard (s):").grid(row=row, column=0, padx=10, pady=5, sticky="e")
         self.entry_refresh = ctk.CTkEntry(scroll_geral, textvariable=self.refresh_var, width=100)
         self.entry_refresh.grid(row=row, column=1, padx=10, pady=5, sticky="w")
+        
+        row += 1
+        ctk.CTkLabel(scroll_geral, text="Cidade (para Previsão do Tempo):").grid(row=row, column=0, padx=10, pady=5, sticky="e")
+        self.entry_cidade = ctk.CTkEntry(scroll_geral, textvariable=self.cidade_var)
+        self.entry_cidade.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
+        
+        # Botão para auto-detectar
+        btn_detect = ctk.CTkButton(
+            scroll_geral, text="📍 Detectar Automaticamente", 
+            width=200, height=28,
+            command=self._on_detect_city
+        )
+        btn_detect.grid(row=row+1, column=1, padx=10, pady=(0, 10), sticky="w")
+        create_tooltip(btn_detect, "Usa seu IP para identificar a cidade atual")
 
         row += 1
         create_section_title(scroll_geral, "Aparência").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
@@ -85,6 +104,12 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkLabel(scroll_geral, text="Cor Principal:").grid(row=row, column=0, padx=10, pady=5, sticky="e")
         self.combo_theme = ctk.CTkComboBox(scroll_geral, values=["dark-blue", "blue", "green"], variable=self.color_theme_var, command=self._on_color_theme_change)
         self.combo_theme.grid(row=row, column=1, padx=10, pady=5, sticky="w")
+
+        row += 1
+        btn_save_geral = create_action_button(
+            scroll_geral, "💾 Salvar Preferências", "btn_save", self.master.master._save_settings, width=200
+        )
+        btn_save_geral.grid(row=row, column=1, padx=10, pady=20, sticky="w")
 
         row += 1
         create_section_title(scroll_geral, "Manutenção de Dados").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
@@ -188,6 +213,14 @@ class SettingsView(ctk.CTkFrame):
             self._load_users()
             
         setup_enter_navigation(self.tabs)
+
+    def _on_detect_city(self):
+        city = get_current_city()
+        if city:
+            self.cidade_var.set(city)
+            messagebox.showinfo("Localização", f"Cidade detectada: {city}")
+        else:
+            messagebox.showerror("Erro", "Não foi possível detectar sua localização automaticamente.")
 
     def _on_appearance_change(self) -> None:
         value = self.appearance_var.get()
