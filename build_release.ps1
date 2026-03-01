@@ -7,19 +7,23 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "Iniciando build do RJE Avaliações..." -ForegroundColor Green
 
-# 1. Limpar pasta dist antiga
-if (Test-Path "dist") {
-    Remove-Item "dist" -Recurse -Force
+# 1. Limpar pastas de build antigas
+$oldPaths = @("dist", "dist_fix", "dist_fix_v2", "dist_final", "build")
+foreach ($path in $oldPaths) {
+    if (Test-Path $path) {
+        Write-Host "Limpando $path..." -ForegroundColor Gray
+        Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # 2. Executar PyInstaller
 Write-Host "Executando PyInstaller..." -ForegroundColor Yellow
 $pypython = ".\.venv\Scripts\python.exe"
 if (Test-Path $pypython) {
-    & $pypython -m PyInstaller --noconfirm --clean rje_avaliacoes.spec
+    & $pypython -m PyInstaller --noconfirm --clean --distpath dist_final rje_avaliacoes.spec
 }
 else {
-    pyinstaller --noconfirm --clean rje_avaliacoes.spec
+    pyinstaller --noconfirm --clean --distpath dist_final rje_avaliacoes.spec
 }
 
 if ($LASTEXITCODE -ne 0) {
@@ -28,13 +32,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 3. Preparar pasta de distribuição
-$distPath = "dist\Release"
+$distPath = "dist_final\Release"
 if (Test-Path $distPath) { Remove-Item $distPath -Recurse -Force }
 New-Item -ItemType Directory -Path $distPath | Out-Null
 
 Write-Host "Copiando arquivos da distribuição (onedir)..." -ForegroundColor Yellow
 # Copia todo o conteúdo gerado pelo PyInstaller (exe, dlls, _internal)
-Copy-Item "dist\RJE_Avaliacoes\*" -Destination $distPath -Recurse -Force
+Copy-Item "dist_final\RJE_Avaliacoes\*" -Destination $distPath -Recurse -Force
 
 Write-Host "Copiando arquivos de configuração (.env)..." -ForegroundColor Yellow
 if (Test-Path ".env") {
@@ -48,7 +52,7 @@ else {
 $versionContent = Get-Content "version.py" | Select-String '__version__ = "(.*)"'
 $version = $versionContent.Matches.Groups[1].Value
 $zipName = "RJE_Avaliacoes_v$version.zip"
-$zipPath = "dist\$zipName"
+$zipPath = "dist_final\$zipName"
 
 Write-Host "Compactando para $zipName..." -ForegroundColor Yellow
 Compress-Archive -Path "$distPath\*" -DestinationPath $zipPath -Force

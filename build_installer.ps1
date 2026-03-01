@@ -1,6 +1,6 @@
 # Script para compilar o Instalador EXE (Requer Inno Setup)
 
-$iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+$iscc = "C:\Users\renat\AppData\Local\Programs\Inno Setup 6\ISCC.exe"
 
 if (-not (Test-Path $iscc)) {
     Write-Warning "Inno Setup Compiler (ISCC.exe) não encontrado em $iscc."

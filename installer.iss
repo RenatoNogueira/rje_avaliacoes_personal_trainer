@@ -4,7 +4,7 @@
 [Setup]
 ; Informações básicas do aplicativo
 AppName=RJE Avaliações
-AppVersion=1.0.32
+AppVersion=1.0.33
 AppPublisher=Renato Nogueira
 DefaultDirName=C:\RJE_Avaliacoes
 DefaultGroupName=RJE Avaliações
@@ -27,7 +27,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Inclui todos os arquivos da pasta dist/Release (agora em modo 'onedir')
-Source: "dist\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist_final\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTA: Adicione outros arquivos necessários aqui se não estiverem no dist
 
 [Icons]

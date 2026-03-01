@@ -1,6 +1,6 @@
 # RJE Avaliações - Sistema de Gestão para Personal Trainers
 
-**Versão:** v1.0.31
+**Versão:** v1.0.33
   
 **Desenvolvido por:** RJE Tecnologia
 
