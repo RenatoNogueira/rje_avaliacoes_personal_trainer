@@ -32,13 +32,15 @@ $distPath = "dist\Release"
 if (Test-Path $distPath) { Remove-Item $distPath -Recurse -Force }
 New-Item -ItemType Directory -Path $distPath | Out-Null
 
-Write-Host "Copiando executável final..." -ForegroundColor Yellow
-Copy-Item "dist\RJE_Avaliacoes.exe" -Destination $distPath
+Write-Host "Copiando arquivos da distribuição (onedir)..." -ForegroundColor Yellow
+# Copia todo o conteúdo gerado pelo PyInstaller (exe, dlls, _internal)
+Copy-Item "dist\RJE_Avaliacoes\*" -Destination $distPath -Recurse -Force
 
 Write-Host "Copiando arquivos de configuração (.env)..." -ForegroundColor Yellow
 if (Test-Path ".env") {
     Copy-Item ".env" -Destination $distPath
-} else {
+}
+else {
     Write-Warning "Arquivo .env não encontrado! O token de atualização não será incluído."
 }
 
