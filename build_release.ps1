@@ -38,6 +38,8 @@ Copy-Item "dist\RJE_Avaliacoes.exe" -Destination $distPath
 Write-Host "Copiando arquivos de configuração (.env)..." -ForegroundColor Yellow
 if (Test-Path ".env") {
     Copy-Item ".env" -Destination $distPath
+} else {
+    Write-Warning "Arquivo .env não encontrado! O token de atualização não será incluído."
 }
 
 # 4. Compactar para ZIP

@@ -20,7 +20,9 @@ class Updater:
         self.download_url = None
         self.release_notes = ""
         self.log_file = self._get_base_path() / "data" / "updater.log"
-        self._log("Iniciando Updater...")
+        self._log(f"--- Iniciando Updater {self.current_version} ---")
+        self._log(f"Base Path: {self._get_base_path()}")
+        self._log(f"Log File: {self.log_file}")
 
     def _log(self, message):
         """Grava logs para diagnóstico."""
@@ -61,15 +63,22 @@ class Updater:
                 base_path = self._get_base_path()
                 env_path = base_path / ".env"
                 if env_path.exists():
+                    self._log(f"Lendo .env em: {env_path}")
                     with env_path.open("r", encoding="utf-8") as f:
                         for line in f:
-                            if line.strip().startswith("GITHUB_TOKEN="):
-                                raw_val = line.strip().split("=", 1)[1].strip()
-                                github_token = raw_val.split("#")[0].strip()
-                                self._log("Token carregado do .env")
-                                break
+                            clean_line = line.split("#")[0].strip() # Remove comentários e trim
+                            if not clean_line: continue
+                            
+                            if "=" in clean_line:
+                                key, val = clean_line.split("=", 1)
+                                if key.strip().upper() == "GITHUB_TOKEN":
+                                    github_token = val.strip()
+                                    self._log(f"Token encontrado no .env: {github_token[:4]}...{github_token[-4:]}")
+                                    break
+                else:
+                    self._log(f"Arquivo .env não encontrado em: {env_path}")
             except Exception as e:
-                self._log(f"Erro ao ler .env: {e}")
+                self._log(f"Erro ao ler .env: {str(e)}")
 
             # Prioridade 2: Variável de ambiente
             if not github_token:
