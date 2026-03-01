@@ -78,17 +78,20 @@ class Updater:
                     self._log("Token carregado da variável de ambiente")
 
             if github_token:
-                # 'token' é o esquema recomendado para tokens clássicos no header Authorization
-                req.add_header("Authorization", f"token {github_token}")
-                self._log(f"Token anexado aos headers para {self.repo}")
+                # 'Bearer' é o esquema padrão moderno para o GitHub
+                # 'token' ainda funciona, mas Bearer é recomendado
+                req.add_header("Authorization", f"Bearer {github_token}")
+                self._log(f"Token ({github_token[:4]}...{github_token[-4:]}) anexado aos headers para {self.repo}")
             else:
-                self._log(f"Aviso: Tentando acessar {self.repo} sem token.")
+                self._log(f"Aviso: Token não encontrado. Consultando {self.repo} como repositório público.")
             
+            # User-Agent é OBRIGATÓRIO para a API do GitHub
+            req.add_header("User-Agent", "RJE-Avaliacoes-Desktop-App")
             req.add_header("Accept", "application/vnd.github.v3+json")
             
             self._log(f"Chamando API: {api_url}")
             
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=12) as response:
                 data = json.loads(response.read().decode())
                 
             tag_name = data.get("tag_name", "").lstrip("v")
@@ -137,9 +140,12 @@ class Updater:
         except urllib.error.HTTPError as e:
             err_msg = f"Erro GitHub ({e.code}): {e.reason}"
             if e.code == 404:
-                err_msg = f"RepositÃ³rio ou Release nÃ£o encontrada: {self.repo}. Verifique se o token tem permissÃ£o de 'repo'."
+                if github_token:
+                    err_msg = f"Erro 404: Repositório ou Release não encontrada ({self.repo}). Verifique se o token é válido para este repositório privado."
+                else:
+                    err_msg = f"Erro 404: Repositório privado ou inexistente. Token não encontrado no arquivo .env."
             elif e.code == 401:
-                err_msg = "Token invÃ¡lido ou expirado. Verifique o arquivo .env"
+                err_msg = "Erro 401: Token inválido ou sem permissão. Verifique o arquivo .env"
             
             print(err_msg)
             self._log(err_msg)
