@@ -51,7 +51,7 @@ class TreinoPDF(FPDF):
         self.ln(5)
         # Linha separadora
         self.set_draw_color(200, 200, 200)
-        self.line(10, self.get_y(), 200, self.get_y())
+        self.line(10, self.get_y(), 287, self.get_y())
         self.ln(8)
 
     def footer(self):
@@ -92,7 +92,7 @@ def gerar_pdf_treino(
             pass
 
     # 2. Instanciar PDF
-    pdf = TreinoPDF(brand_info=brand_info, orientation="P", unit="mm", format="A4")
+    pdf = TreinoPDF(brand_info=brand_info, orientation="L", unit="mm", format="A4")
     pdf.add_page()
 
     # 3. Cabeçalho do Treino (Aluno, Professor, Datas)
@@ -110,7 +110,13 @@ def gerar_pdf_treino(
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(20, 6, "Aluno(a):", align="L")
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(80, 6, dados_aluno.get("nome", "-"), align="L")
+    
+    nome_disp = dados_aluno.get("nome", "-")
+    sexo_aluno = dados_aluno.get("sexo", "")
+    if sexo_aluno:
+        nome_disp += f" ({sexo_aluno})"
+    
+    pdf.cell(80, 6, nome_disp, align="L")
     
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(25, 6, "Professor(a):", align="L")
@@ -237,7 +243,7 @@ def gerar_pdf_treino(
         # Cabeçalho da Divisão
         pdf.ln(2)
         # Verificar se cabe na página, senão quebra
-        if pdf.get_y() > 250:
+        if pdf.get_y() > 170:
             pdf.add_page()
             
         pdf.set_font("Helvetica", "B", 12)
@@ -268,7 +274,7 @@ def gerar_pdf_treino(
         pdf.ln(4)
 
     # 5. Seções Informativas (Cardio, Ativações, Instruções)
-    if pdf.get_y() > 220:
+    if pdf.get_y() > 150:
         pdf.add_page()
     else:
         pdf.ln(5)
@@ -308,12 +314,12 @@ def gerar_pdf_treino(
 
     # 6. Espaço para anotações manuais (Opcional - mantido reduzido)
     pdf.ln(5)
-    if pdf.get_y() < 240:
+    if pdf.get_y() < 170:
         pdf.set_font("Helvetica", "B", 10)
         pdf.cell(0, 6, "Anotações / Feedback:", ln=True)
         pdf.set_draw_color(150, 150, 150)
-        pdf.line(10, pdf.get_y() + 5, 200, pdf.get_y() + 5)
-        pdf.line(10, pdf.get_y() + 12, 200, pdf.get_y() + 12)
+        pdf.line(10, pdf.get_y() + 5, 287, pdf.get_y() + 5)
+        pdf.line(10, pdf.get_y() + 12, 287, pdf.get_y() + 12)
 
     # Salvar
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -6,7 +6,7 @@ import sys
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
-token = "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"
+token = "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"
 repo = "RenatoNogueira/rje_avaliacoes_personal_trainer"
 
 def check_url(url, description):

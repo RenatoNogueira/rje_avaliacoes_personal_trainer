@@ -109,6 +109,21 @@ class AlunosView(ctk.CTkFrame):
         bind_mask(self.entry_data_nascimento, "date")
 
         row += 1
+        ctk.CTkLabel(form_scroll, text="Sexo:").grid(
+            row=row, column=0, padx=10, pady=5, sticky="e"
+        )
+        self.combo_sexo = ctk.CTkComboBox(form_scroll, values=[
+            "Mulher (Cisgênero/Transgênero)",
+            "Homem (Cisgênero/Transgênero)",
+            "Não binário",
+            "Travesti",
+            "Agênero",
+            "Outro"
+        ], state="readonly")
+        self.combo_sexo.set("")
+        self.combo_sexo.grid(row=row, column=1, padx=10, pady=5, sticky="ew")
+
+        row += 1
         ctk.CTkLabel(form_scroll, text="CPF:").grid(
             row=row, column=0, padx=10, pady=5, sticky="e"
         )
@@ -262,7 +277,7 @@ class AlunosView(ctk.CTkFrame):
         self.selected_id = aluno_id
         row = db.fetch_one(
             """
-            SELECT id, nome, data_nascimento, telefone, email, objetivo, observacoes_medicas, cpf, cep, foto_perfil, instagram
+            SELECT id, nome, data_nascimento, telefone, email, objetivo, observacoes_medicas, cpf, cep, foto_perfil, instagram, sexo
             FROM alunos
             WHERE id = ?
             """,
@@ -280,6 +295,8 @@ class AlunosView(ctk.CTkFrame):
         
         self.entry_instagram.delete(0, "end")
         self.entry_instagram.insert(0, row["instagram"] or "")
+
+        self.combo_sexo.set(row["sexo"] or "")
 
         self.entry_data_nascimento.delete(0, "end")
         try:
@@ -323,6 +340,7 @@ class AlunosView(ctk.CTkFrame):
 
         self.entry_nome.delete(0, "end")
         self.entry_instagram.delete(0, "end")
+        self.combo_sexo.set("")
         self.entry_data_nascimento.delete(0, "end")
         self.entry_telefone.delete(0, "end")
         try:
@@ -403,6 +421,7 @@ class AlunosView(ctk.CTkFrame):
             pass
         email = self.entry_email.get().strip() or None
         objetivo = self.entry_objetivo.get().strip() or None
+        sexo = self.combo_sexo.get().strip() or None
         observacoes_medicas = self.text_obs_medicas.get("1.0", "end").strip() or None
 
         if not nome:
@@ -447,8 +466,8 @@ class AlunosView(ctk.CTkFrame):
             db.execute(
                 """
                 INSERT INTO alunos
-                    (nome, data_nascimento, telefone, email, objetivo, observacoes_medicas, cpf, cep, foto_perfil, instagram)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (nome, data_nascimento, telefone, email, objetivo, observacoes_medicas, cpf, cep, foto_perfil, instagram, sexo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     nome,
@@ -460,7 +479,8 @@ class AlunosView(ctk.CTkFrame):
                     only_digits(cpf) if cpf else None,
                     only_digits(cep) if cep else None,
                     self.foto_perfil_path,
-                    instagram
+                    instagram,
+                    sexo
                 ),
                 commit=True,
             )
@@ -470,7 +490,7 @@ class AlunosView(ctk.CTkFrame):
                 UPDATE alunos
                 SET nome = ?, data_nascimento = ?, telefone = ?, email = ?,
                     objetivo = ?, observacoes_medicas = ?, cpf = ?, cep = ?,
-                    foto_perfil = ?, instagram = ?
+                    foto_perfil = ?, instagram = ?, sexo = ?
                 WHERE id = ?
                 """,
                 (
@@ -484,6 +504,7 @@ class AlunosView(ctk.CTkFrame):
                     only_digits(cep) if cep else None,
                     self.foto_perfil_path,
                     instagram,
+                    sexo,
                     self.selected_id,
                 ),
                 commit=True,

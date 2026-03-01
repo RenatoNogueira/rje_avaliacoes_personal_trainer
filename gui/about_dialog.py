@@ -130,12 +130,10 @@ class AboutDialog(ctk.CTkToplevel):
         self.updater = Updater(self)
         self.updater.check_for_updates_async(self.on_update_checked)
 
-    def on_update_checked(self, has_update):
-        # Callback executado na thread, precisa agendar na UI thread se ctk não for thread-safe (geralmente tkinter requer after)
-        # Mas ctk muitas vezes lida ok, vamos usar after para garantir
-        self.after(0, lambda: self._update_ui_after_check(has_update))
+    def on_update_checked(self, has_update, error_msg=None):
+        self.after(0, lambda: self._update_ui_after_check(has_update, error_msg))
 
-    def _update_ui_after_check(self, has_update):
+    def _update_ui_after_check(self, has_update, error_msg=None):
         if has_update is True:
             self.btn_update.configure(
                 state="normal", 
@@ -155,12 +153,15 @@ class AboutDialog(ctk.CTkToplevel):
                 text_color="green"
             )
         else:
-            # Caso de erro (has_update pode ser None se o callback falhar ou retornar erro)
+            # Caso de erro
             self.btn_update.configure(
                 state="normal", 
-                text="Falha na verificação", 
+                text=error_msg[:25] + "..." if error_msg else "Falha na verificação", 
                 fg_color="transparent",
                 border_color="#e74c3c",
                 text_color="#e74c3c",
                 command=self.check_updates
             )
+            if error_msg:
+                from .utils import show_toast
+                show_toast(self, f"Erro: {error_msg}", 4000)

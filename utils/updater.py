@@ -19,6 +19,22 @@ class Updater:
         self.latest_version = None
         self.download_url = None
         self.release_notes = ""
+        self.log_file = self._get_base_path() / "data" / "updater.log"
+        self._log("Iniciando Updater...")
+
+    def _log(self, message):
+        """Grava logs para diagnóstico."""
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            # Garante que a pasta data exista
+            log_dir = self.log_file.parent
+            if not log_dir.exists():
+                log_dir.mkdir(parents=True)
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{timestamp}] {message}\n")
+        except Exception:
+            pass
 
     def check_for_updates_async(self, callback=None):
         """Inicia a verificação em uma thread separada para não travar a UI."""
@@ -36,33 +52,39 @@ class Updater:
         try:
             # 1. Obter releases do GitHub
             api_url = f"https://api.github.com/repos/{self.repo}/releases/latest"
-            
             req = urllib.request.Request(api_url)
             req.add_header("User-Agent", "RJE-Avaliacoes-Updater")
-            
-            # Autenticação para repositórios privados
-            # Tenta ler do arquivo .env ou variável de ambiente
-            github_token = os.environ.get("GITHUB_TOKEN")
+
+            # Prioridade 1: Arquivo .env local
+            github_token = None
+            try:
+                base_path = self._get_base_path()
+                env_path = base_path / ".env"
+                if env_path.exists():
+                    with env_path.open("r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip().startswith("GITHUB_TOKEN="):
+                                raw_val = line.strip().split("=", 1)[1].strip()
+                                github_token = raw_val.split("#")[0].strip()
+                                self._log("Token carregado do .env")
+                                break
+            except Exception as e:
+                self._log(f"Erro ao ler .env: {e}")
+
+            # Prioridade 2: Variável de ambiente
             if not github_token:
-                try:
-                    base_path = self._get_base_path()
-                    env_path = base_path / ".env"
-                    if env_path.exists():
-                        with env_path.open("r", encoding="utf-8") as f:
-                            for line in f:
-                                if line.strip().startswith("GITHUB_TOKEN="):
-                                    raw_val = line.strip().split("=", 1)[1].strip()
-                                    # Remove possíveis comentários no final da linha (ex: TOKEN=abc # comentário)
-                                    github_token = raw_val.split("#")[0].strip()
-                                    break
-                except Exception as e:
-                    print(f"Erro ao ler .env: {e}")
-            
+                github_token = os.environ.get("GITHUB_TOKEN")
+                if github_token:
+                    self._log("Token carregado da variável de ambiente")
+
             if github_token:
-                # Usa Bearer (padrão moderno) ou token (legado). Bearer é mais robusto para tokens de granulação fina.
                 req.add_header("Authorization", f"Bearer {github_token}")
             else:
-                print("Aviso: Token do GitHub não encontrado. Se o repositório for privado, a verificação falhará.")
+                self._log("Aviso: Token do GitHub não encontrado.")
+            
+            req.add_header("Accept", "application/vnd.github.v3+json")
+            
+            self._log(f"Chamando API: {api_url}")
             
             with urllib.request.urlopen(req, timeout=8) as response:
                 data = json.loads(response.read().decode())
@@ -71,7 +93,9 @@ class Updater:
             self.latest_version = tag_name
             self.release_notes = data.get("body", "")
             
-            print(f"Versão Local: {self.current_version} | Versão Remota: {tag_name}")
+            msg = f"Versão Local: {self.current_version} | Versão Remota: {tag_name}"
+            print(msg)
+            self._log(msg)
             
             # 2. Comparar versões (semântica simples)
             if self._is_newer(tag_name, self.current_version):
@@ -83,41 +107,66 @@ class Updater:
                     assets = data.get("assets", [])
                     for asset in assets:
                         if asset.get("name", "").lower().endswith(".zip"):
-                            download_url = asset.get("url") # URL da API para download autenticado
+                            download_url = asset.get("url")
+                            self._log(f"Asset binário encontrado: {asset.get('name')}")
                             break
+                    if not download_url:
+                        self._log("Erro: Rodando como EXE mas nenhum asset ZIP encontrado na release.")
                 
-                # Se não achou (ou não é exe), usa o zipball do código fonte
-                if not download_url:
+                # Se não é frozen, pode usar o código fonte
+                if not download_url and not getattr(sys, 'frozen', False):
                     download_url = data.get("zipball_url")
+                    self._log("Usando zipball de código fonte.")
                 
                 self.download_url = download_url
                 
                 if callback:
-                    callback(True) # Atualização disponível
+                    try:
+                        callback(True, None)
+                    except TypeError:
+                        callback(True) # Fallback para compatibilidade
             else:
                 if callback:
-                    callback(False) # Sem atualização
+                    try:
+                        callback(False, None)
+                    except TypeError:
+                        callback(False)
                     
         except urllib.error.HTTPError as e:
+            err_msg = f"Erro HTTP {e.code}: {e.reason}"
             if e.code == 404:
-                print(f"Nenhuma release encontrada no repositório {self.repo}.")
-            else:
-                print(f"Erro HTTP ao verificar atualizações: {e}")
+                err_msg = f"Nenhuma release encontrada no repositório {self.repo}."
+            print(err_msg)
+            self._log(err_msg)
             if callback:
-                callback(False)
+                try:
+                    callback(None, err_msg)
+                except TypeError:
+                    callback(False)
         except Exception as e:
-            print(f"Erro ao verificar atualizações: {e}")
+            err_msg = f"Erro ao verificar atualizações: {e}"
+            print(err_msg)
+            self._log(err_msg)
             if callback:
-                callback(False)
+                try:
+                    callback(None, err_msg)
+                except TypeError:
+                    callback(False)
 
     def _is_newer(self, remote_ver, local_ver):
-        # Comparação básica de strings ou tuplas
+        """Compara versões numericamente (ex: 1.0.24 > 1.0.23)."""
         try:
-            r_parts = [int(x) for x in remote_ver.split(".")]
-            l_parts = [int(x) for x in local_ver.split(".")]
-            return r_parts > l_parts
+            def to_tuple(v):
+                # Extrai apenas números e converte para tupla de ints
+                import re
+                parts = re.findall(r'\d+', v)
+                return tuple(int(p) for p in parts)
+            
+            r_val = to_tuple(remote_ver)
+            l_val = to_tuple(local_ver)
+            return r_val > l_val
         except Exception:
-            return remote_ver != local_ver
+            return str(remote_ver) != str(local_ver)
 
     def perform_update(self):
         """Baixa e aplica a atualização."""
@@ -133,23 +182,32 @@ class Updater:
             req.add_header("User-Agent", "RJE-Avaliacoes-Updater")
             req.add_header("Accept", "application/octet-stream") 
             
-            github_token = os.environ.get("GITHUB_TOKEN")
+            # Prioridade 1: Arquivo .env local
+            github_token = None
+            try:
+                base_path = self._get_base_path()
+                env_path = base_path / ".env"
+                if env_path.exists():
+                    with env_path.open("r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip().startswith("GITHUB_TOKEN="):
+                                raw_val = line.strip().split("=", 1)[1].strip()
+                                github_token = raw_val.split("#")[0].strip()
+                                self._log("Token carregado do .env para download")
+                                break
+            except Exception as e:
+                self._log(f"Erro ao ler .env para download: {e}")
+
+            # Prioridade 2: Variável de ambiente
             if not github_token:
-                 try:
-                     base_path = self._get_base_path()
-                     env_path = base_path / ".env"
-                     if env_path.exists():
-                         with env_path.open("r", encoding="utf-8") as f:
-                             for line in f:
-                                 if line.strip().startswith("GITHUB_TOKEN="):
-                                     raw_val = line.strip().split("=", 1)[1].strip()
-                                     github_token = raw_val.split("#")[0].strip()
-                                     break
-                 except Exception:
-                     pass
+                github_token = os.environ.get("GITHUB_TOKEN")
+                if github_token:
+                    self._log("Token carregado da variável de ambiente para download")
             
             if github_token:
                 req.add_header("Authorization", f"Bearer {github_token}")
+            else:
+                self._log("Aviso: Token não encontrado para download.")
 
             with urllib.request.urlopen(req, timeout=30) as response, open(temp_zip, 'wb') as out_file:
                 shutil.copyfileobj(response, out_file)

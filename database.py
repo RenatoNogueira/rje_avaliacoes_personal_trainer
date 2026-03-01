@@ -225,6 +225,7 @@ class Database:
             # Atualizações para Alunos e Profissional (Fotos e Instagram/Telefone)
             self._ensure_column(cursor, "alunos", "foto_perfil", "TEXT")
             self._ensure_column(cursor, "alunos", "instagram", "TEXT")
+            self._ensure_column(cursor, "alunos", "sexo", "TEXT")
             self._ensure_column(cursor, "usuarios", "foto_perfil", "TEXT")
             self._ensure_column(cursor, "usuarios", "telefone", "TEXT")
             self._ensure_column(cursor, "usuarios", "cidade", "TEXT")

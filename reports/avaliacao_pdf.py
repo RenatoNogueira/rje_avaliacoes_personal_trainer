@@ -57,7 +57,11 @@ def gerar_pdf_avaliacao(
     pdf.cell(0, 8, prof_text, ln=True)
 
     nome_aluno = dados_aluno.get("nome", "")
-    pdf.cell(0, 8, f"Aluno(a): {nome_aluno}", ln=True)
+    sexo_aluno = dados_aluno.get("sexo", "")
+    aluno_label = f"Aluno(a): {nome_aluno}"
+    if sexo_aluno:
+        aluno_label += f" ({sexo_aluno})"
+    pdf.cell(0, 8, aluno_label, ln=True)
     cpf_txt = (dados_aluno.get("cpf") or "").strip()
     cep_txt = (dados_aluno.get("cep") or "").strip()
     if cpf_txt or cep_txt:
