@@ -89,43 +89,20 @@ class AboutDialog(ctk.CTkToplevel):
             command=self.check_updates,
             width=200
         )
-        self.btn_update.pack(pady=(0, 25))
+        self.btn_update.pack(pady=(0, 10))
 
-        # Footer / Créditos
-        footer_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        footer_frame.pack(side="bottom", fill="x", pady=(0, 20))
-        
-        ctk.CTkLabel(
-            footer_frame, 
-            text="© 2026 RJE Tecnologia", 
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color=_c("view_header_subtitle")
-        ).pack()
-        
-        ctk.CTkLabel(
-            footer_frame, 
-            text="Todos os direitos reservados.", 
-            font=ctk.CTkFont(size=10),
-            text_color="gray"
-        ).pack()
-        
-        # Botão Fechar
-        self.btn_close = ctk.CTkButton(
+        # Label de Erro Detalhado (Oculta por padrão)
+        self.lbl_error = ctk.CTkLabel(
             self.main_frame,
-            text="Fechar",
-            width=90,
-            height=28,
-            fg_color="transparent",
-            border_width=1,
-            border_color=_c("card_border"),
-            text_color=_c("view_header_title"),
-            hover_color=_c("card_hover"),
-            command=self.destroy
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color="#e74c3c",
+            wraplength=350
         )
-        self.btn_close.pack(side="bottom", pady=(0, 15))
-
+        self.lbl_error.pack(pady=(0, 15))
 
     def check_updates(self):
+        self.lbl_error.configure(text="")
         self.btn_update.configure(state="disabled", text="Verificando...")
         self.updater = Updater(self)
         self.updater.check_for_updates_async(self.on_update_checked)
@@ -135,6 +112,7 @@ class AboutDialog(ctk.CTkToplevel):
 
     def _update_ui_after_check(self, has_update, error_msg=None):
         if has_update is True:
+            self.lbl_error.configure(text="")
             self.btn_update.configure(
                 state="normal", 
                 text=f"Atualizar para {self.updater.latest_version}",
@@ -144,7 +122,10 @@ class AboutDialog(ctk.CTkToplevel):
                 border_width=0,
                 command=self.updater.perform_update
             )
+            from .utils import show_toast
+            show_toast(self, "Nova versão disponível!", 3000)
         elif has_update is False:
+            self.lbl_error.configure(text="")
             self.btn_update.configure(
                 state="disabled", 
                 text="Sistema Atualizado", 
@@ -156,12 +137,15 @@ class AboutDialog(ctk.CTkToplevel):
             # Caso de erro
             self.btn_update.configure(
                 state="normal", 
-                text=error_msg[:25] + "..." if error_msg else "Falha na verificação", 
+                text="Tentar Novamente", 
                 fg_color="transparent",
                 border_color="#e74c3c",
                 text_color="#e74c3c",
                 command=self.check_updates
             )
+            # Mostra erro detalhado na label
+            self.lbl_error.configure(text=f"Erro: {error_msg}" if error_msg else "Falha ao conectar com GitHub")
+            
             if error_msg:
                 from .utils import show_toast
-                show_toast(self, f"Erro: {error_msg}", 4000)
+                show_toast(self, "Falha na verificação", 3000)

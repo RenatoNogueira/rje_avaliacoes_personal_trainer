@@ -2,7 +2,7 @@ import urllib.request
 import json
 import os
 
-token = "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"
+token = "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"
 repo = "RenatoNogueira/rje_avaliacoes_personal_trainer"
 
 def check_url(url, description):

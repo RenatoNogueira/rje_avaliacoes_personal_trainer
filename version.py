@@ -1,2 +1,2 @@
-__version__ = "1.0.27"
+__version__ = "1.0.29"
 GITHUB_REPO = "RenatoNogueira/rje_avaliacoes_personal_trainer"  # Substitua pelo seu repositório: usuario/repositorio

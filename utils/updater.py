@@ -78,22 +78,24 @@ class Updater:
                     self._log("Token carregado da variável de ambiente")
 
             if github_token:
-                req.add_header("Authorization", f"Bearer {github_token}")
+                # 'token' é o esquema recomendado para tokens clássicos no header Authorization
+                req.add_header("Authorization", f"token {github_token}")
+                self._log(f"Token anexado aos headers para {self.repo}")
             else:
-                self._log("Aviso: Token do GitHub não encontrado.")
+                self._log(f"Aviso: Tentando acessar {self.repo} sem token.")
             
             req.add_header("Accept", "application/vnd.github.v3+json")
             
             self._log(f"Chamando API: {api_url}")
             
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode())
                 
             tag_name = data.get("tag_name", "").lstrip("v")
             self.latest_version = tag_name
             self.release_notes = data.get("body", "")
             
-            msg = f"Versão Local: {self.current_version} | Versão Remota: {tag_name}"
+            msg = f"Sucesso: VersÃ£o Remota {tag_name} encontrada para {self.repo}"
             print(msg)
             self._log(msg)
             
@@ -133,9 +135,12 @@ class Updater:
                         callback(False)
                     
         except urllib.error.HTTPError as e:
-            err_msg = f"Erro HTTP {e.code}: {e.reason}"
+            err_msg = f"Erro GitHub ({e.code}): {e.reason}"
             if e.code == 404:
-                err_msg = f"Nenhuma release encontrada no repositório {self.repo}."
+                err_msg = f"RepositÃ³rio ou Release nÃ£o encontrada: {self.repo}. Verifique se o token tem permissÃ£o de 'repo'."
+            elif e.code == 401:
+                err_msg = "Token invÃ¡lido ou expirado. Verifique o arquivo .env"
+            
             print(err_msg)
             self._log(err_msg)
             if callback:
@@ -205,7 +210,7 @@ class Updater:
                     self._log("Token carregado da variável de ambiente para download")
             
             if github_token:
-                req.add_header("Authorization", f"Bearer {github_token}")
+                req.add_header("Authorization", f"token {github_token}")
             else:
                 self._log("Aviso: Token não encontrado para download.")
 

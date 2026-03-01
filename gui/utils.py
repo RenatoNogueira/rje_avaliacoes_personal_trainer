@@ -144,30 +144,42 @@ def show_toast(master, message, duration=2000):
     """
     Exibe uma mensagem temporária (Toast) na parte inferior da tela.
     """
+    import os
     try:
         # Cria uma janela Toplevel sem bordas
         toast = ctk.CTkToplevel(master)
         toast.wm_overrideredirect(True)
         
-        # Posiciona no centro inferior
-        # Obtém geometria da janela principal
-        master_x = master.winfo_rootx()
-        master_y = master.winfo_rooty()
-        master_w = master.winfo_width()
-        master_h = master.winfo_height()
+        # Cor mágica para transparência (pink/magenta raramente usado na UI)
+        trans_color = "#f0f0ff" 
+        
+        # Corrige o "quadrado preto" no Windows ajustando a transparência de forma robusta
+        if os.name == "nt":
+            toast.configure(fg_color=trans_color)
+            toast.attributes("-transparentcolor", trans_color)
+            # toast.attributes("-alpha", 0.95) # Alpha pode conflitar com transparentcolor em alguns sistemas
+        
+        # Posiciona no centro inferior da tela relativo à janela MASTER
+        # winfo_rootx/y retorna a posição da janela na tela
+        m_x = master.winfo_rootx()
+        m_y = master.winfo_rooty()
+        m_w = master.winfo_width()
+        m_h = master.winfo_height()
         
         # Tamanho do toast
-        toast_w = 300
-        toast_h = 40
+        toast_w = 340
+        toast_h = 44
         
-        pos_x = master_x + (master_w - toast_w) // 2
-        pos_y = master_y + master_h - 100
+        pos_x = m_x + (m_w - toast_w) // 2
+        pos_y = m_y + m_h - 70 # 70 pixels acima da borda inferior da janela
         
         toast.geometry(f"{toast_w}x{toast_h}+{pos_x}+{pos_y}")
         
-        # Frame e Label
-        frame = ctk.CTkFrame(toast, fg_color=_c("view_header_icon"), corner_radius=20)
-        frame.pack(fill="both", expand=True)
+        # Frame e Label (O frame deve ter uma cor sólida diferente da trans_color)
+        bg_pill = _c("view_header_icon")[1] if ctk.get_appearance_mode() == "Dark" else _c("view_header_icon")[0]
+        
+        frame = ctk.CTkFrame(toast, fg_color=bg_pill, corner_radius=22)
+        frame.pack(fill="both", expand=True, padx=2, pady=2)
         
         label = ctk.CTkLabel(frame, text=message, text_color="white", font=ctk.CTkFont(family="Inter", size=13, weight="bold"))
         label.pack(expand=True, fill="both", padx=20)
@@ -177,9 +189,10 @@ def show_toast(master, message, duration=2000):
         
         # Tenta colocar no topo
         toast.lift()
+        toast.attributes("-topmost", True)
         
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Erro ao exibir toast: {e}")
 
 def setup_enter_navigation(parent):
     """
