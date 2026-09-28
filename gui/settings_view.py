@@ -1,11 +1,18 @@
 import customtkinter as ctk
+import datetime
 import os
 import shutil
+import sqlite3
+import zipfile
+from pathlib import Path
 from tkinter import filedialog, messagebox
+
+import app_paths
+from utils.app_support import open_path, log
 
 from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_empty_state, create_section_title, bind_card_hover
 from database import db
-from .utils import setup_enter_navigation, delete_files_with_prefix, create_tooltip
+from .utils import setup_enter_navigation, delete_files_with_prefix, create_tooltip, show_toast, bind_live_search
 from utils.geo_utils import get_current_city
 from utils.image_utils import create_circular_image
 
@@ -70,6 +77,7 @@ class SettingsView(ctk.CTkFrame):
         ctk.CTkLabel(scroll_geral, text="Auto-atualização Dashboard (s):").grid(row=row, column=0, padx=10, pady=5, sticky="e")
         self.entry_refresh = ctk.CTkEntry(scroll_geral, textvariable=self.refresh_var, width=100)
         self.entry_refresh.grid(row=row, column=1, padx=10, pady=5, sticky="w")
+        create_tooltip(self.entry_refresh, "Intervalo em segundos para atualizar o Dashboard. Use 0 para desativar.")
         
         row += 1
         ctk.CTkLabel(scroll_geral, text="Cidade (para Previsão do Tempo):").grid(row=row, column=0, padx=10, pady=5, sticky="e")
@@ -85,7 +93,8 @@ class SettingsView(ctk.CTkFrame):
         btn_detect.grid(row=row+1, column=1, padx=10, pady=(0, 10), sticky="w")
         create_tooltip(btn_detect, "Usa seu IP para identificar a cidade atual")
 
-        row += 1
+        # (o botão ocupa a linha seguinte; antes o título "Aparência" ficava sobreposto a ele)
+        row += 2
         create_section_title(scroll_geral, "Aparência").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
         
         row += 1
@@ -107,7 +116,7 @@ class SettingsView(ctk.CTkFrame):
 
         row += 1
         btn_save_geral = create_action_button(
-            scroll_geral, "💾 Salvar Preferências", "btn_save", self.master.master._save_settings, width=200
+            scroll_geral, "💾 Salvar Preferências", "btn_save", self._on_save_prefs, width=200
         )
         btn_save_geral.grid(row=row, column=1, padx=10, pady=20, sticky="w")
 
@@ -120,16 +129,43 @@ class SettingsView(ctk.CTkFrame):
         
         btn_backup = create_action_button(btn_frame, "📦 Criar Backup", "btn_new", self._on_backup, width=150)
         btn_backup.pack(side="left", padx=(0, 10))
+        create_tooltip(btn_backup, "Gera um arquivo .zip com o banco de dados, fotos e configurações")
         
         btn_restore = create_action_button(btn_frame, "🔄 Restaurar Backup", "btn_delete", self._on_restore, width=150)
         btn_restore.pack(side="left", padx=(0, 10))
+        create_tooltip(btn_restore, "Restaura um backup (.zip ou .db). Uma cópia de segurança do estado atual é feita antes.")
         
         btn_open_folder = create_action_button(btn_frame, "📂 Pasta de Dados", "btn_save", self._on_open_data_folder, width=180)
         btn_open_folder.pack(side="left", padx=(0, 10))
 
         row += 1
-        db_path_label = ctk.CTkLabel(scroll_geral, text=f"Caminho: {db.db_path}", font=ctk.CTkFont(size=10), text_color="gray")
+        db_path_label = ctk.CTkLabel(
+            scroll_geral,
+            text=f"Dados em: {app_paths.DATA_ROOT}   •   Backups automáticos diários em: {app_paths.BACKUP_DIR / 'auto'}",
+            font=ctk.CTkFont(size=10), text_color="gray", justify="left", wraplength=900,
+        )
         db_path_label.grid(row=row, column=0, columnspan=2, padx=15, pady=(0, 10), sticky="w")
+
+        # ── Segurança: alterar a própria senha ──
+        row += 1
+        create_section_title(scroll_geral, "Segurança").grid(row=row, column=0, columnspan=2, padx=16, pady=(18, 8), sticky="w")
+        row += 1
+        ctk.CTkLabel(scroll_geral, text="Senha atual:").grid(row=row, column=0, padx=10, pady=5, sticky="e")
+        self.entry_senha_atual = ctk.CTkEntry(scroll_geral, show="*", width=260)
+        self.entry_senha_atual.grid(row=row, column=1, padx=10, pady=5, sticky="w")
+        row += 1
+        ctk.CTkLabel(scroll_geral, text="Nova senha:").grid(row=row, column=0, padx=10, pady=5, sticky="e")
+        self.entry_senha_nova = ctk.CTkEntry(scroll_geral, show="*", width=260, placeholder_text="mínimo 6 caracteres")
+        self.entry_senha_nova.grid(row=row, column=1, padx=10, pady=5, sticky="w")
+        row += 1
+        ctk.CTkLabel(scroll_geral, text="Confirmar nova senha:").grid(row=row, column=0, padx=10, pady=5, sticky="e")
+        self.entry_senha_conf = ctk.CTkEntry(scroll_geral, show="*", width=260)
+        self.entry_senha_conf.grid(row=row, column=1, padx=10, pady=5, sticky="w")
+        self.entry_senha_conf.bind("<Return>", lambda e: self._on_change_password(), add="+")
+        row += 1
+        create_action_button(scroll_geral, "🔒 Alterar minha senha", "btn_save", self._on_change_password, width=200).grid(
+            row=row, column=1, padx=10, pady=(10, 20), sticky="w"
+        )
 
         # --- Tab Usuários ---
         if is_admin:
@@ -153,9 +189,9 @@ class SettingsView(ctk.CTkFrame):
             filter_frame = ctk.CTkFrame(left_panel, fg_color="transparent")
             filter_frame.grid(row=0, column=0, padx=0, pady=(0, 10), sticky="ew")
             
-            self.entry_filtro_tel = ctk.CTkEntry(filter_frame, placeholder_text="Filtrar por telefone...")
+            self.entry_filtro_tel = ctk.CTkEntry(filter_frame, placeholder_text="Filtrar por nome, usuário ou telefone...")
             self.entry_filtro_tel.pack(side="left", fill="x", expand=True, padx=(0, 5))
-            self.entry_filtro_tel.bind("<Return>", lambda e: self._load_users())
+            bind_live_search(self.entry_filtro_tel, self._load_users)
             
             ctk.CTkButton(filter_frame, text="🔍", width=40, command=self._load_users).pack(side="right")
 
@@ -214,11 +250,56 @@ class SettingsView(ctk.CTkFrame):
             
         setup_enter_navigation(self.tabs)
 
+    def _on_save_prefs(self) -> None:
+        try:
+            v = int(str(self.refresh_var.get()).strip() or 0)
+            if v < 0:
+                raise ValueError
+            if 0 < v < 10:
+                v = 10
+            self.refresh_var.set(str(v))
+        except ValueError:
+            messagebox.showwarning("Configurações", "Informe um número inteiro de segundos (0 desativa).")
+            self.entry_refresh.focus_set()
+            return
+        app = self.winfo_toplevel()
+        if hasattr(app, "_save_settings"):
+            app._save_settings(notify=True)
+
+    def _on_change_password(self) -> None:
+        if not self.current_user:
+            return
+        atual = self.entry_senha_atual.get()
+        nova = self.entry_senha_nova.get()
+        conf = self.entry_senha_conf.get()
+        row = db.fetch_one("SELECT senha_hash FROM usuarios WHERE id = ?", (int(self.current_user["id"]),))
+        ok, _ = db.verify_password(atual, row["senha_hash"] if row else None)
+        if not ok:
+            messagebox.showwarning("Segurança", "A senha atual não confere.")
+            self.entry_senha_atual.focus_set()
+            return
+        if len(nova) < 6:
+            messagebox.showwarning("Segurança", "A nova senha deve ter pelo menos 6 caracteres.")
+            self.entry_senha_nova.focus_set()
+            return
+        if nova != conf:
+            messagebox.showwarning("Segurança", "A confirmação não confere com a nova senha.")
+            self.entry_senha_conf.focus_set()
+            return
+        if nova == atual:
+            messagebox.showwarning("Segurança", "A nova senha deve ser diferente da atual.")
+            return
+        db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
+                   (db.hash_password(nova), int(self.current_user["id"])), commit=True)
+        for e in (self.entry_senha_atual, self.entry_senha_nova, self.entry_senha_conf):
+            e.delete(0, "end")
+        show_toast(self, "Senha alterada com sucesso", 2500, kind="success")
+
     def _on_detect_city(self):
         city = get_current_city()
         if city:
             self.cidade_var.set(city)
-            messagebox.showinfo("Localização", f"Cidade detectada: {city}")
+            show_toast(self, f"Cidade detectada: {city}", 2500, kind="success")
         else:
             messagebox.showerror("Erro", "Não foi possível detectar sua localização automaticamente.")
 
@@ -246,8 +327,8 @@ class SettingsView(ctk.CTkFrame):
             params = []
             
             if filtro_tel:
-                query += " WHERE telefone LIKE ?"
-                params.append(f"%{filtro_tel}%")
+                query += " WHERE telefone LIKE ? OR nome LIKE ? OR username LIKE ?"
+                params.extend([f"%{filtro_tel}%"] * 3)
                 
             query += " ORDER BY username"
 
@@ -277,7 +358,7 @@ class SettingsView(ctk.CTkFrame):
         content.pack(fill="both", padx=10, pady=10)
         
         # Foto
-        foto_path = row["foto_perfil"]
+        foto_path = app_paths.resolve_data_path(row["foto_perfil"])
         lbl_foto = ctk.CTkLabel(content, text="👤", width=40, height=40, fg_color="gray50", corner_radius=20)
         if foto_path:
             try:
@@ -376,6 +457,20 @@ class SettingsView(ctk.CTkFrame):
         if not username:
             messagebox.showwarning("Usuários", "Informe o nome de usuário.")
             return
+        if senha and len(senha) < 6:
+            messagebox.showwarning("Usuários", "A senha deve ter pelo menos 6 caracteres.")
+            return
+
+        # Não permite remover o último administrador ativo (evita ficar sem acesso à gestão)
+        if self.selected_user_id is not None and (not is_admin or not ativo):
+            outros_admins = db.fetch_one(
+                "SELECT COUNT(*) AS n FROM usuarios WHERE is_admin = 1 AND ativo = 1 AND id != ?",
+                (self.selected_user_id,),
+            )
+            atual = db.fetch_one("SELECT is_admin, ativo FROM usuarios WHERE id = ?", (self.selected_user_id,))
+            if atual and atual["is_admin"] and atual["ativo"] and (outros_admins["n"] if outros_admins else 0) == 0:
+                messagebox.showwarning("Usuários", "Este é o único administrador ativo. Crie outro administrador antes de alterá-lo.")
+                return
 
         from database import db as _db
 
@@ -393,6 +488,9 @@ class SettingsView(ctk.CTkFrame):
                     (username, senha_hash, nome or None, cref, is_admin, ativo, is_trial),
                     commit=True,
                 )
+            except sqlite3.IntegrityError:
+                messagebox.showerror("Usuários", f"O usuário \"{username}\" já existe. Escolha outro nome de usuário.")
+                return
             except Exception as exc:
                 messagebox.showerror(
                     "Usuários",
@@ -433,6 +531,7 @@ class SettingsView(ctk.CTkFrame):
 
         self._load_users()
         self._on_user_novo()
+        show_toast(self, "Usuário salvo", 2000, kind="success")
 
     def _on_user_desativar(self) -> None:
         if self.selected_user_id is None:
@@ -489,9 +588,7 @@ class SettingsView(ctk.CTkFrame):
             # Vamos assumir que se falhar, avisamos.
             
             # Cleanup physical files (profile photo)
-            from pathlib import Path
-            base_dir = Path(__file__).resolve().parent.parent
-            usuarios_media_dir = base_dir / "media" / "usuarios"
+            usuarios_media_dir = app_paths.MEDIA_DIR / "usuarios"
             
             # Delete user photos (pattern: user_{id}_*)
             delete_files_with_prefix(usuarios_media_dir, f"user_{self.selected_user_id}_")
@@ -513,81 +610,129 @@ class SettingsView(ctk.CTkFrame):
         self._on_user_novo()
 
     def _on_backup(self) -> None:
-        source_path = db.db_path
-        if not source_path.exists():
-            messagebox.showerror(
-                "Backup",
-                "Arquivo de banco de dados não encontrado.",
-            )
+        """Backup completo em .zip: banco (cópia consistente), fotos e configurações."""
+        if not Path(db.db_path).exists():
+            messagebox.showerror("Backup", "Arquivo de banco de dados não encontrado.")
             return
 
-        default_name = source_path.name
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
         dest_path = filedialog.asksaveasfilename(
-            defaultextension=".db",
-            filetypes=[("Banco de dados SQLite", "*.db"), ("Todos os arquivos", "*.*")],
-            initialfile=default_name,
-            title="Salvar backup do banco de dados",
+            defaultextension=".zip",
+            filetypes=[("Backup RJE (zip)", "*.zip")],
+            initialdir=str(app_paths.documents_dir()),
+            initialfile=f"backup_rje_avaliacoes_{stamp}.zip",
+            title="Salvar backup",
         )
         if not dest_path:
             return
 
+        top = self.winfo_toplevel()
         try:
-            shutil.copy(str(source_path), dest_path)
+            top.configure(cursor="watch")
+            top.update_idletasks()
+            tmp_db = app_paths.BACKUP_DIR / f"_tmp_{stamp}.db"
+            db.backup_to(tmp_db)
+            with zipfile.ZipFile(dest_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.write(tmp_db, "data/rje_avaliacoes.db")
+                if app_paths.SETTINGS_PATH.exists():
+                    zf.write(app_paths.SETTINGS_PATH, "data/settings.json")
+                branding = app_paths.DATA_DIR / "branding"
+                for folder, arc_root in ((app_paths.MEDIA_DIR, "media"), (branding, "data/branding")):
+                    if folder.exists():
+                        for f in folder.rglob("*"):
+                            if f.is_file():
+                                zf.write(f, f"{arc_root}/{f.relative_to(folder).as_posix()}")
+            tmp_db.unlink(missing_ok=True)
         except Exception as exc:
-            messagebox.showerror(
-                "Backup",
-                f"Erro ao criar backup: {exc}",
-            )
+            log.exception("Erro no backup")
+            messagebox.showerror("Backup", f"Erro ao criar backup: {exc}")
             return
+        finally:
+            top.configure(cursor="")
 
-        messagebox.showinfo(
-            "Backup",
-            "Backup do banco de dados criado com sucesso.",
-        )
+        show_toast(self, "Backup criado com sucesso", 2500, kind="success")
+
+    @staticmethod
+    def _is_sqlite(path: Path) -> bool:
+        try:
+            with open(path, "rb") as f:
+                return f.read(16) == b"SQLite format 3\x00"
+        except Exception:
+            return False
 
     def _on_restore(self) -> None:
-        confirm = messagebox.askyesno(
-            "Restaurar banco de dados",
-            "Esta ação vai substituir o banco de dados atual.\n"
-            "Recomenda-se criar um backup antes.\n\n"
-            "Deseja continuar?",
-        )
-        if not confirm:
-            return
-
         source_path = filedialog.askopenfilename(
-            filetypes=[("Banco de dados SQLite", "*.db"), ("Todos os arquivos", "*.*")],
-            title="Selecionar arquivo de backup do banco de dados",
+            filetypes=[("Backup RJE", "*.zip *.db"), ("Todos os arquivos", "*.*")],
+            initialdir=str(app_paths.documents_dir()),
+            title="Selecionar arquivo de backup",
         )
         if not source_path:
             return
 
-        dest_path = db.db_path
+        if not messagebox.askyesno(
+            "Restaurar backup",
+            "Os dados atuais serão substituídos pelos do backup selecionado.\n\n"
+            "Uma cópia de segurança do estado atual será criada automaticamente antes.\n\n"
+            "Deseja continuar?",
+            icon="warning",
+        ):
+            return
+
+        src = Path(source_path)
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         try:
-            shutil.copy(source_path, str(dest_path))
+            # 1) cópia de segurança do estado atual
+            db.backup_to(app_paths.BACKUP_DIR / f"antes_da_restauracao_{stamp}.db")
+
+            if src.suffix.lower() == ".zip":
+                with zipfile.ZipFile(src) as zf:
+                    names = zf.namelist()
+                    if "data/rje_avaliacoes.db" not in names:
+                        messagebox.showerror("Restaurar", "O arquivo .zip não parece ser um backup do RJE Avaliações.")
+                        return
+                    tmp_dir = app_paths.BACKUP_DIR / f"_restore_{stamp}"
+                    # extração segura (bloqueia caminhos fora da pasta de destino)
+                    for name in names:
+                        target = (tmp_dir / name).resolve()
+                        if tmp_dir.resolve() not in target.parents:
+                            continue
+                        if name.endswith("/"):
+                            continue
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        with zf.open(name) as fsrc, open(target, "wb") as fdst:
+                            shutil.copyfileobj(fsrc, fdst)
+                    new_db = tmp_dir / "data" / "rje_avaliacoes.db"
+                    if not self._is_sqlite(new_db):
+                        messagebox.showerror("Restaurar", "O banco de dados dentro do backup está corrompido.")
+                        return
+                    shutil.copyfile(new_db, db.db_path)
+                    if (tmp_dir / "data" / "settings.json").exists():
+                        shutil.copyfile(tmp_dir / "data" / "settings.json", app_paths.SETTINGS_PATH)
+                    for sub, dest in (("media", app_paths.MEDIA_DIR), ("data/branding", app_paths.DATA_DIR / "branding")):
+                        s_dir = tmp_dir / sub
+                        if s_dir.exists():
+                            shutil.copytree(s_dir, dest, dirs_exist_ok=True, copy_function=shutil.copyfile)
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+            else:
+                if not self._is_sqlite(src):
+                    messagebox.showerror("Restaurar", "O arquivo selecionado não é um banco de dados válido.")
+                    return
+                shutil.copyfile(src, db.db_path)
+            # garante colunas novas caso o backup seja de versão antiga
+            db._initialize_schema()
         except Exception as exc:
-            messagebox.showerror(
-                "Restaurar banco de dados",
-                f"Erro ao restaurar banco de dados: {exc}",
-            )
+            log.exception("Erro na restauração")
+            messagebox.showerror("Restaurar", f"Erro ao restaurar backup: {exc}")
             return
 
         messagebox.showinfo(
-            "Restaurar banco de dados",
-            "Banco de dados restaurado com sucesso.\n"
-            "Feche e abra o sistema para ver os dados atualizados.",
+            "Restaurar",
+            "Backup restaurado com sucesso.\n\nVocê será direcionado para o login para recarregar os dados.",
         )
+        app = self.winfo_toplevel()
+        if hasattr(app, "logout"):
+            app.after(100, lambda: app.logout(save_settings=False))
 
     def _on_open_data_folder(self) -> None:
-        folder = db.db_path.parent
-        try:
-            if os.name == "nt":
-                os.startfile(folder)
-            else:
-                messagebox.showinfo("Pasta de dados", str(folder))
-        except Exception as exc:
-            messagebox.showerror(
-                "Pasta de dados",
-                f"Não foi possível abrir a pasta: {exc}",
-            )
-
+        if not open_path(app_paths.DATA_ROOT):
+            messagebox.showinfo("Pasta de dados", str(app_paths.DATA_ROOT))

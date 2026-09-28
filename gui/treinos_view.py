@@ -6,7 +6,7 @@ import datetime
 
 from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_empty_state, create_section_title, bind_card_hover
 from database import db
-from .utils import setup_enter_navigation, show_toast, create_tooltip, set_window_icon
+from .utils import setup_enter_navigation, show_toast, create_tooltip, set_window_icon, bind_live_search, debounce, ask_save_pdf, run_pdf_export
 from reports.treino_pdf import gerar_pdf_treino
 
 
@@ -22,6 +22,7 @@ class TreinosView(ctk.CTkFrame):
 
         self.selected_treino_id = None
         self.selected_exercicio_id = None
+        self._cards: dict[int, tuple] = {}
         self.professor_nome_var = professor_var or ctk.StringVar()
         self.cref_var = cref_var or ctk.StringVar()
         self.get_current_user = get_current_user or (lambda: None)
@@ -54,7 +55,10 @@ class TreinosView(ctk.CTkFrame):
         self.entry_filtro_aluno = ctk.CTkEntry(filter_frame, placeholder_text="🔍 Buscar aluno...")
         self.entry_filtro_aluno.grid(row=0, column=0, padx=(0, 5), pady=5, sticky="ew")
         
-        self.combo_filtro_usuario = ctk.CTkComboBox(filter_frame, values=["Todos os profissionais"])
+        bind_live_search(self.entry_filtro_aluno, self.load_treinos)
+
+        self.combo_filtro_usuario = ctk.CTkComboBox(filter_frame, values=["Todos os profissionais"],
+                                                    command=lambda _v: self.load_treinos())
         self.combo_filtro_usuario.grid(row=0, column=1, padx=(5, 0), pady=5, sticky="ew")
 
         btn_filtrar = create_action_button(filter_frame, "Filtrar", "btn_save", self.load_treinos, width=90)
@@ -174,7 +178,13 @@ class TreinosView(ctk.CTkFrame):
         create_action_button(actions_frame, "+ Novo", "btn_new", self.on_novo_treino, width=100).pack(side="left", padx=(0, 10))
         create_action_button(actions_frame, "💾 Salvar", "btn_save", self.on_salvar_treino, width=100).pack(side="left", padx=(0, 10))
         create_action_button(actions_frame, "📄 PDF", "btn_pdf", self.on_gerar_pdf, width=100).pack(side="left", padx=(0, 10))
+        btn_dup = create_action_button(actions_frame, "⧉ Duplicar", "btn_catalog", self.on_duplicar_treino, width=100)
+        btn_dup.pack(side="left", padx=(0, 10))
+        create_tooltip(btn_dup, "Cria uma cópia deste treino (com todos os exercícios), para reaproveitar em outro aluno ou nova fase")
         create_action_button(actions_frame, "🗑️ Excluir", "btn_delete", self.on_excluir_treino, width=100).pack(side="right")
+
+        # Enter no nome do exercício adiciona/atualiza direto
+        self.entry_obs.bind("<Return>", lambda e: self.on_salvar_exercicio(), add="+")
 
         self.load_alunos()
         self._load_usuarios_filtro()
@@ -223,10 +233,23 @@ class TreinosView(ctk.CTkFrame):
         except ValueError:
             return None
 
+    def refresh_data(self) -> None:
+        self.load_treinos()
+
+    def _highlight_selected(self) -> None:
+        for tid, (card, bg, hover) in self._cards.items():
+            try:
+                sel = tid == self.selected_treino_id
+                card.configure(fg_color=_c("list_card_selected") if sel else bg,
+                               border_width=2 if sel else 0, border_color=_c("card_treinos_accent"))
+            except Exception:
+                pass
+
     def load_treinos(self) -> None:
         # Limpa lista
         for widget in self.scroll_list_treinos.winfo_children():
             widget.destroy()
+        self._cards = {}
 
         filtro = self.entry_filtro_aluno.get().strip()
         usuario_value = self.combo_filtro_usuario.get().strip() if hasattr(self, "combo_filtro_usuario") else ""
@@ -269,7 +292,7 @@ class TreinosView(ctk.CTkFrame):
                 query += " AND t.id_usuario_criacao = ?"
                 params.append(usuario_id)
 
-        query += " ORDER BY t.data_criacao DESC"
+        query += " ORDER BY t.data_criacao DESC, t.id DESC"
 
         rows = db.fetch_all(query, tuple(params))
 
@@ -279,6 +302,7 @@ class TreinosView(ctk.CTkFrame):
 
         for row in rows:
             self._create_treino_card(row)
+        self._highlight_selected()
 
     def _create_treino_card(self, row: dict) -> None:
         bg = _c("list_card_bg")
@@ -321,8 +345,11 @@ class TreinosView(ctk.CTkFrame):
         # Bind events
         for w in (card, content_frame, header, lbl_treino, lbl_data, lbl_aluno):
             w.bind("<Button-1>", lambda e, tid=row["id"]: self.load_treino_details(tid))
-            
-        bind_card_hover(card, bg, hover)
+
+        tid = row["id"]
+        card.bind("<Enter>", lambda e, c=card: tid != self.selected_treino_id and c.configure(fg_color=hover))
+        card.bind("<Leave>", lambda e, c=card: tid != self.selected_treino_id and c.configure(fg_color=bg))
+        self._cards[tid] = (card, bg, hover)
 
     def load_treino_details(self, treino_id: int) -> None:
         self.selected_treino_id = treino_id
@@ -343,6 +370,7 @@ class TreinosView(ctk.CTkFrame):
         )
         if row is None:
             return
+        self._highlight_selected()
 
         aluno_str = f"{row['id_aluno']:04d} - {row['nome_aluno']}"
         self.combo_aluno.set(aluno_str)
@@ -425,11 +453,14 @@ class TreinosView(ctk.CTkFrame):
         self.catalog_results.grid_columnconfigure(0, weight=1)
         self.catalog_checkboxes = {}
 
+        # Debounce: busca só após uma pausa na digitação (evita travar a cada tecla)
+        _buscar = debounce(self.entry_catalog_busca, lambda: self.load_catalog_results(reset=True), 350)
         self.entry_catalog_busca.bind(
             "<KeyRelease>",
-            lambda event: self.load_catalog_results(reset=True),
+            lambda event: None if event.keysym in ("Return", "Escape") else _buscar(),
             add="+",
         )
+        self.catalog_window.bind("<Escape>", lambda e: self.catalog_window.destroy())
         self.entry_catalog_busca.bind("<Return>", lambda event: self._catalog_accept_first())
 
         action_frame = ctk.CTkFrame(frame)
@@ -448,7 +479,7 @@ class TreinosView(ctk.CTkFrame):
         )
         btn_select_multi.grid(row=0, column=1, padx=5, pady=0, sticky="w")
 
-        self.catalog_window.focus_set()
+        self.catalog_window.after(200, self.entry_catalog_busca.focus_set)
         self.load_catalog_results(reset=True)
 
     def load_catalog_results(self, reset: bool = False) -> None:
@@ -541,6 +572,16 @@ class TreinosView(ctk.CTkFrame):
             self.catalog_selected_ids.discard(catalog_id)
 
     def _catalog_accept_first(self) -> None:
+        # Se o usuário marcou exatamente um item, usa ele (antes usava sempre o 1º resultado)
+        selecionados = sorted(getattr(self, "catalog_selected_ids", set()) or [])
+        if len(selecionados) == 1:
+            row = db.fetch_one("SELECT id, raw_json FROM exercicios_catalogo WHERE id = ?", (selecionados[0],))
+            if row is not None:
+                self._catalog_fill_form(row)
+                return
+        elif len(selecionados) > 1:
+            self._catalog_add_selected_to_treino()
+            return
         termo = self.entry_catalog_busca.get().strip().lower()
         if termo:
             filtro_like = f"%{termo}%"
@@ -565,6 +606,9 @@ class TreinosView(ctk.CTkFrame):
             )
         if row is None:
             return
+        self._catalog_fill_form(row)
+
+    def _catalog_fill_form(self, row) -> None:
         try:
             data = json.loads(row["raw_json"])
         except Exception:
@@ -593,6 +637,7 @@ class TreinosView(ctk.CTkFrame):
             self.catalog_window.destroy()
         except Exception:
             pass
+        self.entry_series.focus_set()
 
     def _catalog_add_selected_to_treino(self) -> None:
         if not getattr(self, "catalog_selected_ids", None):
@@ -603,7 +648,7 @@ class TreinosView(ctk.CTkFrame):
             return
 
         if self.selected_treino_id is None:
-            self.on_salvar_treino()
+            self.on_salvar_treino(silent=True)
             if self.selected_treino_id is None:
                 return
 
@@ -652,11 +697,21 @@ class TreinosView(ctk.CTkFrame):
                 commit=True,
             )
 
+        qtd = len(self.catalog_selected_ids)
+        self.catalog_selected_ids = set()
+        try:
+            self.catalog_window.destroy()
+        except Exception:
+            pass
         self.load_exercicios()
+        show_toast(self, f"{qtd} exercício(s) adicionados à divisão {divisao}", 2500, kind="success")
 
     def on_novo_treino(self) -> None:
         self.selected_treino_id = None
         self.selected_exercicio_id = None
+        if hasattr(self, "_cards"):
+            self._highlight_selected()
+        self._cards: dict[int, tuple] = {}
 
         if self.combo_aluno.cget("values"):
             self.combo_aluno.set(self.combo_aluno.cget("values")[0])
@@ -674,7 +729,7 @@ class TreinosView(ctk.CTkFrame):
         if hasattr(self, "label_atualizado_por"):
             self.label_atualizado_por.configure(text="Última atualização: -")
 
-    def on_salvar_treino(self) -> None:
+    def on_salvar_treino(self, silent: bool = False) -> None:
         id_aluno = self._get_selected_aluno_id()
         if id_aluno is None:
             messagebox.showwarning("Treinos", "Selecione um aluno para o treino.")
@@ -696,7 +751,9 @@ class TreinosView(ctk.CTkFrame):
                 user_id = None
 
         if self.selected_treino_id is None:
-            db.execute(
+            # lastrowid obtido na MESMA conexão do INSERT (antes last_insert_rowid()
+            # era consultado em outra conexão e retornava 0, quebrando a inclusão de exercícios)
+            self.selected_treino_id = db.insert(
                 """
                 INSERT INTO treinos
                     (id_aluno, nome_do_treino, objetivo,
@@ -704,14 +761,7 @@ class TreinosView(ctk.CTkFrame):
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 (id_aluno, nome_treino, objetivo, user_id, user_id),
-                commit=True,
             )
-            row = db.fetch_one(
-                "SELECT last_insert_rowid() AS id",
-                (),
-            )
-            if row is not None:
-                self.selected_treino_id = int(row["id"])
         else:
             db.execute(
                 """
@@ -725,26 +775,71 @@ class TreinosView(ctk.CTkFrame):
             )
 
         self.load_treinos()
-        self.load_exercicios()
-        messagebox.showinfo("Treinos", "Treino salvo com sucesso.")
+        self.load_treino_details(self.selected_treino_id)
+        if not silent:
+            show_toast(self, "Treino salvo", 2000, kind="success")
 
     def on_excluir_treino(self) -> None:
         if self.selected_treino_id is None:
             show_toast(self, "Selecione um treino para excluir.", 3000)
             return
         
-        if not messagebox.askyesno("Confirmar Exclusão", "Tem certeza que deseja excluir este treino e todos os seus exercícios?"):
+        if not messagebox.askyesno("Confirmar Exclusão", "Tem certeza que deseja excluir este treino e todos os seus exercícios?", icon="warning"):
             return
-            
-        show_toast(self, "Excluindo treino...", 1500)
-        self.after(500, self._confirm_excluir)
+        self._confirm_excluir()
 
     def _confirm_excluir(self):
-        db.execute("DELETE FROM exercicios_treino WHERE id_treino = ?", (self.selected_treino_id,), commit=False)
-        db.execute("DELETE FROM treinos WHERE id = ?", (self.selected_treino_id,), commit=True)
+        # Mesma transação (antes o 1º DELETE rodava sem commit em outra conexão)
+        db.execute_many([
+            ("DELETE FROM exercicios_treino WHERE id_treino = ?", (self.selected_treino_id,)),
+            ("DELETE FROM treinos WHERE id = ?", (self.selected_treino_id,)),
+        ])
         self.on_novo_treino()
         self.load_treinos()
-        messagebox.showinfo("Treinos", "Treino excluído com sucesso.")
+        show_toast(self, "Treino excluído", 2200, kind="success")
+
+    def on_duplicar_treino(self) -> None:
+        """Cria uma cópia do treino selecionado com todos os exercícios."""
+        if self.selected_treino_id is None:
+            show_toast(self, "Selecione um treino na lista para duplicar.", 2500, kind="warning")
+            return
+        origem = db.fetch_one("SELECT id_aluno, nome_do_treino, objetivo FROM treinos WHERE id = ?",
+                              (self.selected_treino_id,))
+        if origem is None:
+            return
+        # Permite trocar o aluno antes de duplicar: usa o aluno selecionado no formulário
+        id_aluno = self._get_selected_aluno_id() or origem["id_aluno"]
+        user = self.get_current_user() if self.get_current_user else None
+        user_id = int(user["id"]) if user and user.get("id") is not None else None
+        novo_id = db.insert(
+            """
+            INSERT INTO treinos (id_aluno, nome_do_treino, objetivo, id_usuario_criacao, id_usuario_atualizacao)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (id_aluno, f"{origem['nome_do_treino']} (cópia)", origem["objetivo"], user_id, user_id),
+        )
+        exercicios = db.fetch_all(
+            """
+            SELECT nome_exercicio, series, repeticoes, carga, descanso, observacoes, divisao
+            FROM exercicios_treino WHERE id_treino = ? ORDER BY id
+            """,
+            (self.selected_treino_id,),
+        )
+        db.execute_many([
+            (
+                """
+                INSERT INTO exercicios_treino
+                    (id_treino, nome_exercicio, series, repeticoes, carga, descanso, observacoes, divisao)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (novo_id, e["nome_exercicio"], e["series"], e["repeticoes"], e["carga"],
+                 e["descanso"], e["observacoes"], e["divisao"]),
+            )
+            for e in exercicios
+        ])
+        self.load_treinos()
+        self.load_treino_details(novo_id)
+        show_toast(self, f"Treino duplicado com {len(exercicios)} exercício(s)", 2500, kind="success")
 
     def load_exercicios(self) -> None:
         # Limpa lista
@@ -883,7 +978,7 @@ class TreinosView(ctk.CTkFrame):
 
     def on_salvar_exercicio(self) -> None:
         if self.selected_treino_id is None:
-            self.on_salvar_treino()
+            self.on_salvar_treino(silent=True)
             if self.selected_treino_id is None:
                 return
 
@@ -899,6 +994,7 @@ class TreinosView(ctk.CTkFrame):
         obs = self.entry_obs.get().strip() or None
         divisao = self.combo_divisao.get().strip() or "A"
 
+        novo_ex = self.selected_exercicio_id is None
         if self.selected_exercicio_id is None:
             db.execute(
                 """
@@ -941,10 +1037,18 @@ class TreinosView(ctk.CTkFrame):
             )
 
         self.load_exercicios()
-        messagebox.showinfo("Treinos", "Exercício salvo no treino com sucesso.")
+        show_toast(self, f"Exercício {'adicionado' if novo_ex else 'atualizado'}: {nome_exercicio}", 2000, kind="success")
+        # Prepara para o próximo exercício (mantém séries/reps/divisão para agilizar)
+        self.selected_exercicio_id = None
+        self.entry_nome_exercicio.delete(0, "end")
+        self.entry_obs.delete(0, "end")
+        self.entry_nome_exercicio.focus_set()
 
     def on_excluir_exercicio(self) -> None:
         if self.selected_exercicio_id is None:
+            show_toast(self, "Clique em um exercício da lista para removê-lo.", 2500, kind="warning")
+            return
+        if not messagebox.askyesno("Confirmar", "Deseja remover este exercício do treino?"):
             return
 
         db.execute(
@@ -955,7 +1059,7 @@ class TreinosView(ctk.CTkFrame):
 
         self.on_novo_exercicio()
         self.load_exercicios()
-        messagebox.showinfo("Treinos", "Exercício removido do treino com sucesso.")
+        show_toast(self, "Exercício removido", 2000, kind="success")
 
     def on_gerar_pdf(self) -> None:
         if self.selected_treino_id is None:
@@ -977,7 +1081,7 @@ class TreinosView(ctk.CTkFrame):
             return
 
         aluno = db.fetch_one(
-            "SELECT id, nome, cpf, cep FROM alunos WHERE id = ?",
+            "SELECT id, nome, cpf, cep, sexo FROM alunos WHERE id = ?",
             (treino["id_aluno"],),
         )
         if aluno is None:
@@ -1005,16 +1109,10 @@ class TreinosView(ctk.CTkFrame):
             (self.selected_treino_id,),
         )
 
-        initial_dir = str(Path.cwd())
-        aluno_nome = str(aluno["nome"]).replace(" ", "_")
-        default_filename = f"treino_{self.selected_treino_id}_{aluno_nome}.pdf"
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("PDF", "*.pdf")],
-            initialdir=initial_dir,
-            initialfile=default_filename,
-            title="Salvar ficha de treino em PDF",
-        )
+        if not exercicios_rows:
+            if not messagebox.askyesno("Treinos", "Este treino ainda não tem exercícios.\nGerar a ficha mesmo assim?"):
+                return
+        file_path = ask_save_pdf(self, f"treino_{aluno['nome']}_{treino['nome_do_treino']}", "Salvar ficha de treino em PDF")
         if not file_path:
             return
 
@@ -1028,11 +1126,15 @@ class TreinosView(ctk.CTkFrame):
         professor_nome = self.professor_nome_var.get().strip()
         professor_cref = self.cref_var.get().strip()
 
-        gerar_pdf_treino(
-            dados_treino=dados_treino,
-            dados_aluno=dados_aluno,
-            exercicios=[dict(row) for row in exercicios_rows],
-            professor_nome=professor_nome,
-            professor_cref=professor_cref,
-            output_path=Path(file_path),
+        run_pdf_export(
+            self,
+            lambda: gerar_pdf_treino(
+                dados_treino=dados_treino,
+                dados_aluno=dados_aluno,
+                exercicios=[dict(row) for row in exercicios_rows],
+                professor_nome=professor_nome,
+                professor_cref=professor_cref,
+                output_path=Path(file_path),
+            ),
+            file_path,
         )

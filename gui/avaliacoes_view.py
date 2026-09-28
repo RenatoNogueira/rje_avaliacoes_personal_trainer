@@ -1,12 +1,15 @@
 import datetime
 import os
+import sqlite3
 from pathlib import Path
 from tkinter import filedialog, messagebox
 import shutil
 
 import customtkinter as ctk
 from .input_masks import bind_mask, format_cpf_value, only_digits
-from .utils import setup_enter_navigation, create_tooltip, show_toast, set_window_icon
+from .utils import setup_enter_navigation, create_tooltip, show_toast, set_window_icon, bind_live_search, ask_save_pdf, run_pdf_export
+import app_paths
+from utils.app_support import open_path
 
 try:
     from PIL import Image  # type: ignore[import]
@@ -29,6 +32,7 @@ class AvaliacoesView(ctk.CTkFrame):
         super().__init__(master)
 
         self.selected_id = None
+        self._cards: dict[int, tuple] = {}
         self.professor_nome_var = professor_var or ctk.StringVar()
         self.cref_var = cref_var or ctk.StringVar()
         self.get_current_user = get_current_user or (lambda: None)
@@ -63,7 +67,10 @@ class AvaliacoesView(ctk.CTkFrame):
         self.entry_filtro_aluno = ctk.CTkEntry(filter_frame, placeholder_text="🔍 Buscar aluno...")
         self.entry_filtro_aluno.grid(row=0, column=0, padx=(0, 5), pady=5, sticky="ew")
         
-        self.combo_filtro_usuario = ctk.CTkComboBox(filter_frame, values=["Todos os profissionais"])
+        bind_live_search(self.entry_filtro_aluno, self.load_avaliacoes)
+
+        self.combo_filtro_usuario = ctk.CTkComboBox(filter_frame, values=["Todos os profissionais"],
+                                                    command=lambda _v: self.load_avaliacoes())
         self.combo_filtro_usuario.grid(row=0, column=1, padx=(5, 0), pady=5, sticky="ew")
 
         # 2. Filtros Avançados (Expander)
@@ -464,6 +471,7 @@ class AvaliacoesView(ctk.CTkFrame):
         
         entry = ctk.CTkEntry(frame, width=50, height=24, font=ctk.CTkFont(size=11))
         entry.pack(side="left", fill="x", expand=True)
+        entry.bind("<Return>", lambda e: self.load_avaliacoes(), add="+")
         return entry
 
     def _load_usuarios_filtro(self) -> None:
@@ -489,7 +497,8 @@ class AvaliacoesView(ctk.CTkFrame):
                 name = Path(path).name
             except Exception:
                 name = str(path)
-            lbl.configure(text=name, text_color="white")
+            # cor legível no tema claro e escuro (antes era branco fixo, invisível no tema claro)
+            lbl.configure(text=f"✔ {name}", text_color=_c("view_header_title"))
         else:
             lbl.configure(text="Nenhum arquivo selecionado", text_color="gray")
 
@@ -550,14 +559,7 @@ class AvaliacoesView(ctk.CTkFrame):
         self._set_foto_label(self.label_foto_lateral_esq, None)
 
     def _resolve_path(self, path_str: str | None) -> Path | None:
-        if not path_str:
-            return None
-        p = Path(path_str)
-        if p.is_absolute():
-            return p
-        # relativo à raiz do projeto
-        base_dir = Path(__file__).resolve().parent.parent
-        return base_dir / p
+        return app_paths.resolve_data_path(path_str)
 
     def on_ver_fotos(self) -> None:
         fotos = [
@@ -640,9 +642,7 @@ class AvaliacoesView(ctk.CTkFrame):
                     "Avaliações", "Arquivo de foto não encontrado."
                 )
                 return
-            try:
-                os.startfile(path_obj)
-            except Exception:
+            if not open_path(path_obj):
                 messagebox.showwarning(
                     "Avaliações", "Não foi possível abrir a foto neste sistema."
                 )
@@ -655,18 +655,13 @@ class AvaliacoesView(ctk.CTkFrame):
         if not src:
             return None
         try:
-            base_dir = Path(__file__).resolve().parent.parent
-            media_dir = base_dir / "media" / "avaliacoes" / str(id_aluno)
+            media_dir = app_paths.MEDIA_DIR / "avaliacoes" / str(id_aluno)
             media_dir.mkdir(parents=True, exist_ok=True)
-            ext = "".join(Path(src).suffixes) or ".jpg"
+            ext = Path(src).suffix.lower() or ".jpg"
             ts = int(datetime.datetime.now().timestamp())
             dest = media_dir / f"{ts}_{tipo}{ext}"
             shutil.copyfile(src, dest)
-            try:
-                rel = dest.relative_to(base_dir)
-                return str(rel)
-            except ValueError:
-                return str(dest)
+            return app_paths.to_storage_path(dest)
         except Exception:
             messagebox.showwarning(
                 "Avaliações",
@@ -696,10 +691,23 @@ class AvaliacoesView(ctk.CTkFrame):
         except ValueError:
             return None
 
+    def refresh_data(self) -> None:
+        self.load_avaliacoes()
+
+    def _highlight_selected(self) -> None:
+        for aid, (card, bg, hover) in self._cards.items():
+            try:
+                sel = aid == self.selected_id
+                card.configure(fg_color=_c("list_card_selected") if sel else bg,
+                               border_width=2 if sel else 0, border_color=_c("card_aval_accent"))
+            except Exception:
+                pass
+
     def load_avaliacoes(self) -> None:
         # Limpa lista atual
         for widget in self.scroll_list.winfo_children():
             widget.destroy()
+        self._cards = {}
 
         filtro = self.entry_filtro_aluno.get().strip()
         usuario_value = self.combo_filtro_usuario.get().strip() if hasattr(self, "combo_filtro_usuario") else ""
@@ -782,7 +790,7 @@ class AvaliacoesView(ctk.CTkFrame):
             query += " AND af.massa_gorda >= ?"
             params.append(massa_gorda_min)
 
-        query += " ORDER BY af.data DESC"
+        query += " ORDER BY af.data DESC, af.id DESC"
 
         rows = db.fetch_all(query, tuple(params))
 
@@ -792,6 +800,7 @@ class AvaliacoesView(ctk.CTkFrame):
 
         for row in rows:
             self._create_card(row)
+        self._highlight_selected()
 
     def _create_card(self, row_obj: sqlite3.Row) -> None:
         row = dict(row_obj)
@@ -856,8 +865,11 @@ class AvaliacoesView(ctk.CTkFrame):
         # Bind events
         for w in (card, content_frame, header, lbl_nome, lbl_data, details_row, lbl_metrics):
             w.bind("<Button-1>", lambda e, aid=row["id"]: self.load_avaliacao_details(aid))
-            
-        bind_card_hover(card, bg, hover)
+
+        aid = row["id"]
+        card.bind("<Enter>", lambda e, c=card: aid != self.selected_id and c.configure(fg_color=hover))
+        card.bind("<Leave>", lambda e, c=card: aid != self.selected_id and c.configure(fg_color=bg))
+        self._cards[aid] = (card, bg, hover)
 
 
     def load_avaliacao_details(self, avaliacao_id: int) -> None:
@@ -882,6 +894,7 @@ class AvaliacoesView(ctk.CTkFrame):
         )
         if row is None:
             return
+        self._highlight_selected()
 
         aluno_row = db.fetch_one(
             "SELECT id, nome FROM alunos WHERE id = ?", (row["id_aluno"],)
@@ -959,9 +972,14 @@ class AvaliacoesView(ctk.CTkFrame):
 
         self.text_historico_saude.configure(state="normal")
         self.text_historico_saude.delete("1.0", "end")
-        if row["historico_saude"]:
-            self.text_historico_saude.insert("end", row["historico_saude"])
+        condicoes, historico_txt = self._split_condicoes(row["historico_saude"])
+        if historico_txt:
+            self.text_historico_saude.insert("end", historico_txt)
         self.text_historico_saude.configure(state="normal")
+        # Restaura as caixas de condições (antes ficavam sempre desmarcadas ao abrir)
+        for chk, nome in ((self.chk_diabetes, "Diabetes"), (self.chk_hipertensao, "Hipertensão"),
+                          (self.chk_lesoes, "Lesões"), (self.chk_cirurgias, "Cirurgias")):
+            chk.select() if nome in condicoes else chk.deselect()
 
         self.text_estilo_vida.configure(state="normal")
         self.text_estilo_vida.delete("1.0", "end")
@@ -1021,10 +1039,29 @@ class AvaliacoesView(ctk.CTkFrame):
 
         self.update_imc_label()
 
+    @staticmethod
+    def _split_condicoes(texto: str | None) -> tuple[set, str]:
+        """Separa o prefixo 'Condições: A, B; ' do texto livre do histórico."""
+        if not texto:
+            return set(), ""
+        prefixo = "Condições:"
+        if not texto.startswith(prefixo):
+            return set(), texto
+        resto = texto[len(prefixo):]
+        if ";" in resto:
+            lista, livre = resto.split(";", 1)
+        else:
+            lista, livre = resto, ""
+        conds = {c.strip() for c in lista.split(",") if c.strip()}
+        return conds, livre.strip()
+
     def on_novo(self) -> None:
         self.selected_id = None
+        if hasattr(self, "_cards"):
+            self._highlight_selected()
         self.combo_aluno.set("")
         self.entry_data.delete(0, "end")
+        self.entry_data.insert(0, datetime.date.today().strftime("%d/%m/%Y"))
 
         self.entry_peso.delete(0, "end")
         self.entry_altura.delete(0, "end")
@@ -1258,10 +1295,17 @@ class AvaliacoesView(ctk.CTkFrame):
         pressao_diastolica = parse_float(self.entry_pressao_diastolica.get())
 
         if peso_str.strip() and peso is None:
-            messagebox.showwarning("Avaliações", "Peso inválido.")
+            messagebox.showwarning("Avaliações", "Peso inválido. Use números, ex.: 72,5")
             return
         if altura_str.strip() and altura is None:
-            messagebox.showwarning("Avaliações", "Altura inválida.")
+            messagebox.showwarning("Avaliações", "Altura inválida. Use metros, ex.: 1.75")
+            return
+        # Faixas plausíveis: evitam erros de digitação comuns (ex.: altura em cm)
+        if altura is not None and not (0.5 <= altura <= 2.5):
+            messagebox.showwarning("Avaliações", "Altura fora do esperado. Informe em metros (ex.: 1.75).")
+            return
+        if peso is not None and not (10 <= peso <= 400):
+            messagebox.showwarning("Avaliações", "Peso fora do esperado. Informe em kg (ex.: 72.5).")
             return
 
         if peso is not None and percentual_gordura is not None:
@@ -1278,6 +1322,9 @@ class AvaliacoesView(ctk.CTkFrame):
         perimetros = self.text_perimetros.get("1.0", "end").strip() or None
         anamnese = self.text_anamnese.get("1.0", "end").strip() or None
         historico_saude = self.text_historico_saude.get("1.0", "end").strip() or None
+        # remove prefixo antigo, se houver, para não duplicar a cada salvamento
+        _, historico_saude = self._split_condicoes(historico_saude)
+        historico_saude = historico_saude or None
         # incorpora checklist selecionado ao texto
         checks = []
         if getattr(self, "chk_diabetes").get():
@@ -1316,7 +1363,8 @@ class AvaliacoesView(ctk.CTkFrame):
                 user_id = None
 
         if self.selected_id is None:
-            db.execute(
+            novo = True
+            self.selected_id = db.insert(
                 """
                 INSERT INTO avaliacoes_fisicas
                     (id_aluno, data, peso, altura,
@@ -1358,9 +1406,9 @@ class AvaliacoesView(ctk.CTkFrame):
                     user_id,
                     user_id,
                 ),
-                commit=True,
             )
         else:
+            novo = False
             db.execute(
                 """
                 UPDATE avaliacoes_fisicas
@@ -1406,19 +1454,24 @@ class AvaliacoesView(ctk.CTkFrame):
                 commit=True,
             )
 
+        # Fotos já copiadas: passam a ser as "salvas" (evita copiar de novo no próximo salvar)
+        self.foto_frente_db, self.foto_frente_src = foto_frente, None
+        self.foto_costas_db, self.foto_costas_src = foto_costas, None
+        self.foto_lateral_dir_db, self.foto_lateral_dir_src = foto_lateral_dir, None
+        self.foto_lateral_esq_db, self.foto_lateral_esq_src = foto_lateral_esq, None
+
         self.load_avaliacoes()
-        messagebox.showinfo("Avaliações", "Avaliação salva com sucesso.")
+        self.load_avaliacao_details(self.selected_id)  # atualiza metadados e rótulos das fotos
+        show_toast(self, "Avaliação registrada" if novo else "Avaliação atualizada", 2200, kind="success")
 
     def on_excluir(self) -> None:
         if self.selected_id is None:
             show_toast(self, "Selecione uma avaliação para excluir.", 3000)
             return
 
-        if not messagebox.askyesno("Confirmar Exclusão", "Tem certeza que deseja excluir esta avaliação?"):
+        if not messagebox.askyesno("Confirmar Exclusão", "Tem certeza que deseja excluir esta avaliação?", icon="warning"):
             return
-
-        show_toast(self, "Excluindo avaliação...", 1500)
-        self.after(500, self._confirm_excluir)
+        self._confirm_excluir()
 
     def _confirm_excluir(self):
         db.execute(
@@ -1429,7 +1482,7 @@ class AvaliacoesView(ctk.CTkFrame):
 
         self.on_novo()
         self.load_avaliacoes()
-        messagebox.showinfo("Avaliações", "Avaliação excluída com sucesso.")
+        show_toast(self, "Avaliação excluída", 2200, kind="success")
 
     def on_gerar_pdf(self) -> None:
         if self.selected_id is None:
@@ -1457,35 +1510,35 @@ class AvaliacoesView(ctk.CTkFrame):
             return
 
         aluno = db.fetch_one(
-            "SELECT id, nome, data_nascimento, cpf, cep FROM alunos WHERE id = ?",
+            "SELECT id, nome, data_nascimento, cpf, cep, sexo FROM alunos WHERE id = ?",
             (avaliacao["id_aluno"],),
         )
         if aluno is None:
             return
 
-        initial_dir = str(Path.cwd())
-        aluno_nome = str(aluno["nome"]).replace(" ", "_")
-        default_filename = f"avaliacao_{self.selected_id}_{aluno_nome}.pdf"
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("PDF", "*.pdf")],
-            initialdir=initial_dir,
-            initialfile=default_filename,
-            title="Salvar avaliação em PDF",
-        )
+        data_ref = str(avaliacao["data"] or "")
+        file_path = ask_save_pdf(self, f"avaliacao_{aluno['nome']}_{data_ref}", "Salvar avaliação em PDF")
         if not file_path:
             return
 
         dados_avaliacao = dict(avaliacao)
+        # Fotos gravadas com caminho relativo → caminho absoluto para o PDF
+        for k in ("foto_frente", "foto_costas", "foto_lateral_dir", "foto_lateral_esq"):
+            resolved = app_paths.resolve_data_path(dados_avaliacao.get(k))
+            dados_avaliacao[k] = str(resolved) if resolved else None
         dados_aluno = dict(aluno)
         professor_nome = self.professor_nome_var.get().strip()
         professor_cref = self.cref_var.get().strip()
 
-        gerar_pdf_avaliacao(
-            dados_avaliacao=dados_avaliacao,
-            dados_aluno=dados_aluno,
-            professor_nome=professor_nome,
-            professor_cref=professor_cref,
-            output_path=Path(file_path),
+        run_pdf_export(
+            self,
+            lambda: gerar_pdf_avaliacao(
+                dados_avaliacao=dados_avaliacao,
+                dados_aluno=dados_aluno,
+                professor_nome=professor_nome,
+                professor_cref=professor_cref,
+                output_path=Path(file_path),
+            ),
+            file_path,
         )
 

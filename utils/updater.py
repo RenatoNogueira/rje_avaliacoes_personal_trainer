@@ -9,7 +9,9 @@ from pathlib import Path
 from tkinter import messagebox
 import customtkinter as ctk
 
-from version import __version__, GITHUB_REPO
+from version import __version__, GITHUB_REPO, UPDATE_REPOS
+import app_paths
+import tempfile
 
 class Updater:
     def __init__(self, master_window):
@@ -19,7 +21,7 @@ class Updater:
         self.latest_version = None
         self.download_url = None
         self.release_notes = ""
-        self.log_file = self._get_base_path() / "data" / "updater.log"
+        self.log_file = app_paths.LOG_DIR / "updater.log"
         self._log(f"--- Iniciando Updater {self.current_version} ---")
         self._log(f"Base Path: {self._get_base_path()}")
         self._log(f"Log File: {self.log_file}")
@@ -45,133 +47,75 @@ class Updater:
         thread.start()
 
     def _get_base_path(self):
-        if getattr(sys, 'frozen', False):
-            return Path(sys.executable).parent
-        else:
-            return Path(__file__).resolve().parent.parent
+        return app_paths.APP_DIR
+
+    def _fetch_latest(self, repo):
+        """Consulta a última release de um repositório público (sem token)."""
+        api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+        req = urllib.request.Request(api_url)
+        req.add_header("User-Agent", "RJE-Avaliacoes-Desktop-App")
+        req.add_header("Accept", "application/vnd.github+json")
+        self._log(f"Chamando API: {api_url}")
+        with urllib.request.urlopen(req, timeout=12) as response:
+            return json.loads(response.read().decode())
 
     def _check_worker(self, callback):
-        try:
-            # 1. Obter releases do GitHub
-            api_url = f"https://api.github.com/repos/{self.repo}/releases/latest"
-            req = urllib.request.Request(api_url)
-            req.add_header("User-Agent", "RJE-Avaliacoes-Updater")
+        def _notify(has_update, err=None):
+            if callback:
+                try:
+                    callback(has_update, err)
+                except TypeError:
+                    callback(bool(has_update))
 
-            # Prioridade 1: Arquivo .env local
-            github_token = None
+        data = None
+        last_error = None
+        for repo in UPDATE_REPOS:
             try:
-                base_path = self._get_base_path()
-                env_path = base_path / ".env"
-                if env_path.exists():
-                    self._log(f"Lendo .env em: {env_path}")
-                    with env_path.open("r", encoding="utf-8") as f:
-                        for line in f:
-                            clean_line = line.split("#")[0].strip() # Remove comentários e trim
-                            if not clean_line: continue
-                            
-                            if "=" in clean_line:
-                                key, val = clean_line.split("=", 1)
-                                if key.strip().upper() == "GITHUB_TOKEN":
-                                    github_token = val.strip()
-                                    self._log(f"Token encontrado no .env: {github_token[:4]}...{github_token[-4:]}")
-                                    break
-                else:
-                    self._log(f"Arquivo .env não encontrado em: {env_path}")
+                data = self._fetch_latest(repo)
+                self.repo = repo
+                break
+            except urllib.error.HTTPError as e:
+                last_error = e
+                self._log(f"{repo}: HTTP {e.code} ({e.reason})")
             except Exception as e:
-                self._log(f"Erro ao ler .env: {str(e)}")
+                last_error = e
+                self._log(f"{repo}: {e}")
 
-            # Prioridade 2: Variável de ambiente
-            if not github_token:
-                github_token = os.environ.get("GITHUB_TOKEN")
-                if github_token:
-                    self._log("Token carregado da variável de ambiente")
+        if data is None:
+            if isinstance(last_error, urllib.error.HTTPError) and last_error.code in (401, 403, 404):
+                err_msg = ("Nenhuma release pública encontrada. Publique a versão em um "
+                           "repositório público do GitHub (veja DEPLOY_GUIDE.md).")
+                if last_error.code == 403:
+                    err_msg = "Limite de consultas do GitHub atingido. Tente novamente mais tarde."
+            else:
+                err_msg = f"Sem conexão com o GitHub ({last_error})."
+            self._log(err_msg)
+            _notify(None, err_msg)
+            return
 
-            if github_token:
-                # 'Bearer' é o esquema padrão moderno para o GitHub
-                # 'token' ainda funciona, mas Bearer é recomendado
-                req.add_header("Authorization", f"Bearer {github_token}")
-                self._log(f"Token ({github_token[:4]}...{github_token[-4:]}) anexado aos headers para {self.repo}")
-            else:
-                self._log(f"Aviso: Token não encontrado. Consultando {self.repo} como repositório público.")
-            
-            # User-Agent é OBRIGATÓRIO para a API do GitHub
-            req.add_header("User-Agent", "RJE-Avaliacoes-Desktop-App")
-            req.add_header("Accept", "application/vnd.github.v3+json")
-            
-            self._log(f"Chamando API: {api_url}")
-            
-            with urllib.request.urlopen(req, timeout=12) as response:
-                data = json.loads(response.read().decode())
-                
-            tag_name = data.get("tag_name", "").lstrip("v")
-            self.latest_version = tag_name
-            self.release_notes = data.get("body", "")
-            
-            msg = f"Sucesso: VersÃ£o Remota {tag_name} encontrada para {self.repo}"
-            print(msg)
-            self._log(msg)
-            
-            # 2. Comparar versões (semântica simples)
-            if self._is_newer(tag_name, self.current_version):
-                # Prioriza asset zip (binário) se estiver no modo frozen
-                download_url = None
-                
-                # Se estamos rodando como EXE, procura um asset .zip na lista de assets
-                if getattr(sys, 'frozen', False):
-                    assets = data.get("assets", [])
-                    for asset in assets:
-                        if asset.get("name", "").lower().endswith(".zip"):
-                            download_url = asset.get("url")
-                            self._log(f"Asset binário encontrado: {asset.get('name')}")
-                            break
-                    if not download_url:
-                        self._log("Erro: Rodando como EXE mas nenhum asset ZIP encontrado na release.")
-                
-                # Se não é frozen, pode usar o código fonte
-                if not download_url and not getattr(sys, 'frozen', False):
-                    download_url = data.get("zipball_url")
-                    self._log("Usando zipball de código fonte.")
-                
-                self.download_url = download_url
-                
-                if callback:
-                    try:
-                        callback(True, None)
-                    except TypeError:
-                        callback(True) # Fallback para compatibilidade
-            else:
-                if callback:
-                    try:
-                        callback(False, None)
-                    except TypeError:
-                        callback(False)
-                    
-        except urllib.error.HTTPError as e:
-            err_msg = f"Erro GitHub ({e.code}): {e.reason}"
-            if e.code == 404:
-                if github_token:
-                    err_msg = f"Erro 404: Repositório ou Release não encontrada ({self.repo}). Verifique se o token é válido para este repositório privado."
-                else:
-                    err_msg = f"Erro 404: Repositório privado ou inexistente. Token não encontrado no arquivo .env."
-            elif e.code == 401:
-                err_msg = "Erro 401: Token inválido ou sem permissão. Verifique o arquivo .env"
-            
-            print(err_msg)
-            self._log(err_msg)
-            if callback:
-                try:
-                    callback(None, err_msg)
-                except TypeError:
-                    callback(False)
-        except Exception as e:
-            err_msg = f"Erro ao verificar atualizações: {e}"
-            print(err_msg)
-            self._log(err_msg)
-            if callback:
-                try:
-                    callback(None, err_msg)
-                except TypeError:
-                    callback(False)
+        tag_name = data.get("tag_name", "").lstrip("v")
+        self.latest_version = tag_name
+        self.release_notes = data.get("body", "")
+        self._log(f"Versão remota {tag_name} encontrada em {self.repo}")
+
+        if not self._is_newer(tag_name, self.current_version):
+            _notify(False)
+            return
+
+        download_url = None
+        if getattr(sys, "frozen", False):
+            # URL pública de download direto (não exige autenticação)
+            for asset in data.get("assets", []):
+                if asset.get("name", "").lower().endswith(".zip"):
+                    download_url = asset.get("browser_download_url")
+                    self._log(f"Pacote encontrado: {asset.get('name')}")
+                    break
+            if not download_url:
+                self._log("Release sem arquivo .zip anexado.")
+        else:
+            download_url = data.get("zipball_url")
+        self.download_url = download_url
+        _notify(True)
 
     def _is_newer(self, remote_ver, local_ver):
         """Compara versões numericamente (ex: 1.0.24 > 1.0.23)."""
@@ -189,59 +133,55 @@ class Updater:
             return str(remote_ver) != str(local_ver)
 
     def perform_update(self):
-        """Baixa e aplica a atualização."""
+        """Baixa a atualização em segundo plano (com progresso) e depois aplica."""
         if not self.download_url:
+            messagebox.showwarning("Atualização", "Nenhum pacote de atualização disponível para esta versão.")
             return
-            
-        try:
-            # 1. Download
-            temp_zip = Path("update.zip")
-            
-            # Adicionar headers para download também, se for asset privado
-            req = urllib.request.Request(self.download_url)
-            req.add_header("User-Agent", "RJE-Avaliacoes-Updater")
-            req.add_header("Accept", "application/octet-stream") 
-            
-            # Prioridade 1: Arquivo .env local
-            github_token = None
+
+        temp_zip = Path(tempfile.gettempdir()) / "rje_avaliacoes_update.zip"
+        progress = _ProgressWindow(self.master, "Baixando atualização...")
+        state = {"done": 0, "total": 0, "error": None, "finished": False}
+
+        def worker():
             try:
-                base_path = self._get_base_path()
-                env_path = base_path / ".env"
-                if env_path.exists():
-                    with env_path.open("r", encoding="utf-8") as f:
-                        for line in f:
-                            if line.strip().startswith("GITHUB_TOKEN="):
-                                raw_val = line.strip().split("=", 1)[1].strip()
-                                github_token = raw_val.split("#")[0].strip()
-                                self._log("Token carregado do .env para download")
-                                break
+                req = urllib.request.Request(self.download_url)
+                req.add_header("User-Agent", "RJE-Avaliacoes-Updater")
+                req.add_header("Accept", "application/octet-stream")
+                with urllib.request.urlopen(req, timeout=60) as response, open(temp_zip, "wb") as out_file:
+                    state["total"] = int(response.headers.get("Content-Length") or 0)
+                    while True:
+                        chunk = response.read(256 * 1024)
+                        if not chunk:
+                            break
+                        out_file.write(chunk)
+                        state["done"] += len(chunk)
             except Exception as e:
-                self._log(f"Erro ao ler .env para download: {e}")
+                state["error"] = e
+                self._log(f"Falha no download: {e}")
+            finally:
+                state["finished"] = True
 
-            # Prioridade 2: Variável de ambiente
-            if not github_token:
-                github_token = os.environ.get("GITHUB_TOKEN")
-                if github_token:
-                    self._log("Token carregado da variável de ambiente para download")
-            
-            if github_token:
-                req.add_header("Authorization", f"token {github_token}")
-            else:
-                self._log("Aviso: Token não encontrado para download.")
+        def poll():
+            if not state["finished"]:
+                progress.set(state["done"], state["total"])
+                self.master.after(200, poll)
+                return
+            progress.close()
+            if state["error"] is not None:
+                messagebox.showerror("Erro", f"Falha ao baixar a atualização:\n{state['error']}")
+                return
+            try:
+                if getattr(sys, "frozen", False):
+                    self._update_frozen(temp_zip)
+                else:
+                    self._update_source(temp_zip)
+            except SystemExit:
+                raise
+            except Exception as e:
+                messagebox.showerror("Erro", f"Falha na atualização: {e}")
 
-            with urllib.request.urlopen(req, timeout=30) as response, open(temp_zip, 'wb') as out_file:
-                shutil.copyfileobj(response, out_file)
-            
-            # 2. Lógica para EXE ou Código Fonte
-            if getattr(sys, 'frozen', False):
-                # Se for executável, precisa usar script externo para substituir
-                self._update_frozen(temp_zip)
-            else:
-                # Se for script Python, atualiza normalmente
-                self._update_source(temp_zip)
-
-        except Exception as e:
-            messagebox.showerror("Erro", f"Falha na atualização: {e}")
+        threading.Thread(target=worker, daemon=True).start()
+        self.master.after(200, poll)
 
     def _update_source(self, temp_zip):
         # ... lógica original de extração e substituição ...
@@ -282,7 +222,7 @@ class Updater:
 
     def _update_frozen(self, temp_zip):
         # Extrai para pasta temporária
-        extract_dir = Path("update_temp_exe")
+        extract_dir = Path(tempfile.gettempdir()) / "rje_update_temp_exe"
         if extract_dir.exists():
             shutil.rmtree(extract_dir)
         extract_dir.mkdir()
@@ -309,7 +249,7 @@ class Updater:
             pass
 
         app_exe = sys.executable
-        app_dir = Path.cwd() # Onde o executável atual está rodando
+        app_dir = app_paths.APP_DIR  # Onde o executável atual está instalado
         
         # Script BAT melhorado
         # - Usa caminhos absolutos
@@ -332,8 +272,8 @@ echo Reiniciando aplicativo...
 start "" "{app_exe}"
 del "%~f0"
 """
-        bat_path = app_dir / "update_script.bat"
-        with open(bat_path, "w") as f:
+        bat_path = Path(tempfile.gettempdir()) / "rje_update_script.bat"
+        with open(bat_path, "w", encoding="mbcs" if os.name == "nt" else "utf-8") as f:
             f.write(bat_script)
             
         messagebox.showinfo("Atualização", "O sistema será fechado para aplicar a atualização.\nAguarde alguns instantes e ele reabrirá automaticamente.")
@@ -361,3 +301,42 @@ del "%~f0"
     def _restart_app(self):
         python = sys.executable
         os.execl(python, python, *sys.argv)
+
+
+class _ProgressWindow:
+    """Janela simples de progresso para o download da atualização."""
+
+    def __init__(self, master, title: str):
+        self.win = ctk.CTkToplevel(master)
+        self.win.title("Atualização")
+        self.win.geometry("380x130")
+        self.win.resizable(False, False)
+        try:
+            self.win.transient(master)
+            self.win.grab_set()
+        except Exception:
+            pass
+        self.win.protocol("WM_DELETE_WINDOW", lambda: None)
+        ctk.CTkLabel(self.win, text=title, font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(18, 8))
+        self.bar = ctk.CTkProgressBar(self.win, width=320)
+        self.bar.pack(pady=4)
+        self.bar.set(0)
+        self.lbl = ctk.CTkLabel(self.win, text="Conectando...")
+        self.lbl.pack(pady=(4, 10))
+
+    def set(self, done: int, total: int) -> None:
+        try:
+            if total > 0:
+                self.bar.set(min(1.0, done / total))
+                self.lbl.configure(text=f"{done / 1_048_576:.1f} de {total / 1_048_576:.1f} MB")
+            else:
+                self.lbl.configure(text=f"{done / 1_048_576:.1f} MB recebidos")
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        try:
+            self.win.grab_release()
+            self.win.destroy()
+        except Exception:
+            pass

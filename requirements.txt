@@ -1,6 +1,6 @@
-customtkinter
-CTkMessagebox
-Pillow
-fpdf2
-matplotlib
-requests
+customtkinter==5.2.2
+Pillow>=10.0
+fpdf2>=2.7
+requests>=2.31
+# Somente para gerar o executável:
+pyinstaller>=6.0

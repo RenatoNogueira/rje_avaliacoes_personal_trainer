@@ -2,13 +2,15 @@ import customtkinter as ctk
 from .theme import _c, font_title, font_subtitle, font_body, create_info_badge, create_action_button
 from .utils import set_window_icon
 from utils.updater import Updater
+from version import __version__
+import app_paths
 
 class AboutDialog(ctk.CTkToplevel):
     def __init__(self, master):
         super().__init__(master)
         
         self.title("Sobre o RJE Avaliações")
-        self.geometry("450x560")
+        self.geometry("450x610")
         self.resizable(False, False)
         
         # Configuração da Janela Modal
@@ -45,7 +47,10 @@ class AboutDialog(ctk.CTkToplevel):
             if Path(logo_path).exists():
                 try:
                     pil_img = Image.open(logo_path)
-                    logo_image = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(85, 85))
+                    w, h = pil_img.size
+                    k = 85 / max(w, h) if max(w, h) else 1
+                    logo_image = ctk.CTkImage(light_image=pil_img, dark_image=pil_img,
+                                              size=(max(1, int(w * k)), max(1, int(h * k))))
                 except Exception:
                     pass
 
@@ -66,7 +71,7 @@ class AboutDialog(ctk.CTkToplevel):
         ver_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         ver_frame.pack(pady=(0, 15))
         
-        self.version_badge = create_info_badge(ver_frame, f"Versão {Updater(self).current_version}")
+        self.version_badge = create_info_badge(ver_frame, f"Versão {__version__}")
         self.version_badge.pack()
 
         # Descrição em um "inset card"
@@ -99,7 +104,19 @@ class AboutDialog(ctk.CTkToplevel):
             text_color="#e74c3c",
             wraplength=350
         )
-        self.lbl_error.pack(pady=(0, 15))
+        self.lbl_error.pack(pady=(0, 6))
+
+        # Informações úteis para suporte
+        ctk.CTkLabel(
+            self.main_frame,
+            text=f"Dados: {app_paths.DATA_ROOT}\nAtalhos: pressione F1 na tela principal",
+            font=ctk.CTkFont(size=10),
+            text_color="gray",
+            justify="center",
+            wraplength=360,
+        ).pack(pady=(0, 12))
+
+        self.bind("<Escape>", lambda e: self.destroy())
 
     def check_updates(self):
         self.lbl_error.configure(text="")

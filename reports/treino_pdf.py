@@ -3,7 +3,7 @@ from typing import Any, Iterable
 import json
 import datetime
 
-from fpdf import FPDF
+from .pdf_base import SafeFPDF as FPDF, load_branding
 from fpdf.fonts import FontFace
 from fpdf.enums import TableCellFillMode
 
@@ -69,27 +69,8 @@ def gerar_pdf_treino(
     professor_cref: str,
     output_path: Path,
 ) -> None:
-    # 1. Carregar configurações de branding
-    base_dir = Path(__file__).resolve().parent.parent
-    settings_path = base_dir / "data" / "settings.json"
-    brand_info = {
-        "logo_path": None,
-        "marca_nome": "",
-        "contato_linha": ""
-    }
-    
-    if settings_path.exists():
-        try:
-            data = json.loads(settings_path.read_text(encoding="utf-8"))
-            brand_info["logo_path"] = data.get("logo_path")
-            brand_info["marca_nome"] = data.get("marca_nome")
-            
-            email = (data.get("contato_email") or "").strip()
-            tel = (data.get("contato_telefone") or "").strip()
-            parts = [p for p in [email, tel] if p]
-            brand_info["contato_linha"] = " | ".join(parts)
-        except Exception:
-            pass
+    # 1. Carregar configurações de branding (da pasta de dados do usuário)
+    brand_info = load_branding()
 
     # 2. Instanciar PDF
     pdf = TreinoPDF(brand_info=brand_info, orientation="L", unit="mm", format="A4")

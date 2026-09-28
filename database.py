@@ -1,8 +1,14 @@
+import hashlib
+import hmac
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterable, Optional
-import hashlib
+
+import app_paths
+
+PBKDF2_ITERATIONS = 240_000
 
 
 class Database:
@@ -19,12 +25,11 @@ class Database:
                         Se não informado, será usado 'data/rje_avaliacoes.db'
                         relativo à pasta deste arquivo.
         """
-        base_dir = Path(__file__).resolve().parent
-
         if db_path is None:
-            data_dir = base_dir / "data"
-            data_dir.mkdir(parents=True, exist_ok=True)
-            db_path = data_dir / "rje_avaliacoes.db"
+            # Copia dados de versões antigas (_internal/data) na primeira execução
+            app_paths.migrate_legacy_data()
+            db_path = app_paths.DB_PATH
+        db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.db_path: Path = db_path
 
@@ -37,9 +42,10 @@ class Database:
         - Ativa FOREIGN KEY (por padrão o SQLite não ativa isso).
         - Define row_factory como sqlite3.Row para facilitar o acesso por nome de coluna.
         """
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(str(self.db_path), timeout=10)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA busy_timeout = 5000;")
         return conn
 
     def _initialize_schema(self) -> None:
@@ -194,6 +200,13 @@ class Database:
                 """
             )
 
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_exercicios_treino_id_treino ON exercicios_treino (id_treino);"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_alunos_nome ON alunos (nome);"
+            )
+
             self._ensure_column(cursor, "alunos", "cpf", "TEXT")
             self._ensure_column(cursor, "alunos", "cep", "TEXT")
             self._ensure_column(cursor, "avaliacoes_fisicas", "historico_saude", "TEXT")
@@ -265,7 +278,7 @@ class Database:
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type};")
 
     def _populate_exercicios_catalogo(self, cursor: sqlite3.Cursor) -> None:
-        json_path = Path(__file__).resolve().parent / "exercises-ptbr-full-translation.json"
+        json_path = app_paths.resource_path("exercises-ptbr-full-translation.json")
 
         if not json_path.exists():
             return
@@ -292,9 +305,71 @@ class Database:
                 (raw,),
             )
 
+    # ─────────────────────────── Senhas ────────────────────────────
+    @staticmethod
+    def _legacy_hash(password: str) -> str:
+        return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
     def hash_password(self, password: str) -> str:
-        data = password.encode("utf-8")
-        return hashlib.sha256(data).hexdigest()
+        """Gera hash PBKDF2-SHA256 com salt aleatório (formato auto-descritivo)."""
+        salt = os.urandom(16).hex()
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), PBKDF2_ITERATIONS)
+        return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${dk.hex()}"
+
+    def verify_password(self, password: str, stored: str | None) -> tuple[bool, bool]:
+        """
+        Verifica a senha. Retorna (ok, precisa_atualizar_hash).
+        Aceita o formato antigo (SHA-256 sem salt) para manter compatibilidade.
+        """
+        if not stored:
+            return False, False
+        if stored.startswith("pbkdf2_sha256$"):
+            try:
+                _, iters, salt, digest = stored.split("$", 3)
+                dk = hashlib.pbkdf2_hmac(
+                    "sha256", password.encode("utf-8"), bytes.fromhex(salt), int(iters)
+                )
+                ok = hmac.compare_digest(dk.hex(), digest)
+                return ok, ok and int(iters) < PBKDF2_ITERATIONS
+            except Exception:
+                return False, False
+        ok = hmac.compare_digest(self._legacy_hash(password), stored)
+        return ok, ok
+
+    def is_default_admin_password(self, user_id: int) -> bool:
+        row = self.fetch_one("SELECT username, senha_hash FROM usuarios WHERE id = ?", (user_id,))
+        if row is None or (row["username"] or "").lower() != "admin":
+            return False
+        ok, _ = self.verify_password("admin", row["senha_hash"])
+        return ok
+
+    def insert(self, query: str, params: Optional[Iterable[Any]] = None) -> int:
+        """Executa um INSERT e retorna o id gerado (lastrowid) na MESMA conexão."""
+        with self._get_connection() as conn:
+            cur = conn.execute(query, tuple(params or ()))
+            conn.commit()
+            return int(cur.lastrowid or 0)
+
+    def execute_many(self, statements: list[tuple[str, Iterable[Any]]]) -> None:
+        """Executa vários comandos em uma única transação (tudo ou nada)."""
+        with self._get_connection() as conn:
+            for query, params in statements:
+                conn.execute(query, tuple(params or ()))
+            conn.commit()
+
+    def backup_to(self, dest: Path) -> None:
+        """Cópia consistente do banco usando a API de backup do SQLite."""
+        dest = Path(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        src = sqlite3.connect(str(self.db_path))
+        try:
+            out = sqlite3.connect(str(dest))
+            try:
+                src.backup(out)
+            finally:
+                out.close()
+        finally:
+            src.close()
 
     def execute(
         self,

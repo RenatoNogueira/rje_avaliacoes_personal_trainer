@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 import json
 
-from fpdf import FPDF
+from .pdf_base import SafeFPDF as FPDF, load_branding
 
 
 def gerar_pdf_avaliacao(
@@ -16,27 +16,16 @@ def gerar_pdf_avaliacao(
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    try:
-        base_dir = Path(__file__).resolve().parent.parent
-        settings_path = base_dir / "data" / "settings.json"
-        logo_path = None
-        marca_nome = ""
-        contato_linha = ""
-        if settings_path.exists():
-            data = json.loads(settings_path.read_text(encoding="utf-8"))
-            logo_path = data.get("logo_path") or None
-            marca_nome = (data.get("marca_nome") or "").strip()
-            email = (data.get("contato_email") or "").strip()
-            tel = (data.get("contato_telefone") or "").strip()
-            parts = [p for p in [email, tel] if p]
-            contato_linha = " | ".join(parts)
-        if logo_path:
-            p = Path(logo_path)
-            if p.exists():
-                pdf.image(str(p), x=10, y=8, w=24)
-                pdf.ln(18)
-    except Exception:
-        pass
+    brand = load_branding()
+    logo_path = brand["logo_path"]
+    marca_nome = brand["marca_nome"]
+    contato_linha = brand["contato_linha"]
+    if logo_path:
+        try:
+            pdf.image(logo_path, x=10, y=8, w=24)
+            pdf.ln(18)
+        except Exception:
+            pass
 
     pdf.set_font("Helvetica", "B", 16)
     titulo = "Avaliação Física"

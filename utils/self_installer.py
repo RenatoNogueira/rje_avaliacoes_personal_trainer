@@ -11,12 +11,22 @@ class SelfInstaller:
     
     @classmethod
     def is_installed(cls):
-        """Verifica se o app está rodando da pasta de destino."""
+        """
+        Verifica se o app já está instalado.
+        Considera instalado quando roda da pasta padrão OU de uma pasta criada
+        pelo instalador (presença do desinstalador unins*.exe) — antes, instalar
+        em outra pasta pelo Setup fazia a pergunta aparecer a cada abertura.
+        """
         if not getattr(sys, 'frozen', False):
             return True # No modo de desenvolvimento, ignora
             
-        current_exe = Path(sys.executable).parent
-        return current_exe.absolute() == cls.TARGET_DIR.absolute()
+        current_dir = Path(sys.executable).parent
+        if current_dir.absolute() == cls.TARGET_DIR.absolute():
+            return True
+        if any(current_dir.glob("unins*.exe")):
+            return True
+        # Execução "portátil" já escolhida anteriormente
+        return (current_dir / ".portable").exists()
 
     @classmethod
     def run(cls):
@@ -33,9 +43,15 @@ class SelfInstaller:
                "(Você também pode clicar em 'Não' para executá-lo como portátil)")
                
         if messagebox.askyesno("Instalação", msg):
+            root.destroy()
             cls.show_installer_gui()
             sys.exit(0) # Sai para que o usuário abra o atalho ou o app instalado
         else:
+            # Lembra a escolha para não perguntar novamente
+            try:
+                (Path(sys.executable).parent / ".portable").write_text("1", encoding="utf-8")
+            except Exception:
+                pass
             root.destroy()
 
     @classmethod
@@ -104,30 +120,20 @@ class InstallerGUI(ctk.CTk):
             source_internal = Path(sys._MEIPASS) if hasattr(sys, '_MEIPASS') else Path(".")
             current_exe = Path(sys.executable)
             
-            if target.exists():
-                # Tenta remover, mas ignora erros de arquivos em uso
-                shutil.rmtree(target, ignore_errors=True)
-            
+            # NÃO apaga a pasta de destino: ela pode conter dados de versões antigas.
             os.makedirs(target, exist_ok=True)
-            
-            # Copiar arquivos de dados/configuração internos
-            # Queremos manter a estrutura de pastas originais (gui, reports, etc.) na pasta de destino para que o app funcione
-            # No entanto, se o app for OneFile, ele continuará procurando em _MEIPASS a menos que mudemos a lógica.
-            # Mas o usuário quer que ele descompacte o sistema.
-            
-            # Vamos copiar o EXE para o destino
-            shutil.copy2(current_exe, target / "RJE_Avaliacoes.exe")
-            
-            # Copiar pastas e arquivos que o sistema precisa ter "fora" do exe (como data/ e LICENSE)
-            for folder in ["data", "gui", "reports", "utils", "assets"]:
-                src_folder = source_internal / folder
-                if src_folder.exists():
-                    shutil.copytree(src_folder, target / folder, dirs_exist_ok=True)
-            
-            for file in ["LICENSE.txt", "icon.ico", "version.py", "exercises-ptbr-full-translation.json"]:
-                src_file = source_internal / file
-                if src_file.exists():
-                    shutil.copy2(src_file, target / file)
+
+            # Build "onedir": copia a pasta inteira do aplicativo (exe + _internal).
+            # (Antes só o .exe era copiado, gerando uma instalação quebrada.)
+            app_dir = current_exe.parent
+            for item in app_dir.iterdir():
+                if item.name.lower() in {".portable"}:
+                    continue
+                dest = target / item.name
+                if item.is_dir():
+                    shutil.copytree(item, dest, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(item, dest)
 
             self._create_shortcut(target)
             

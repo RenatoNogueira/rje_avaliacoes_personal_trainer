@@ -85,60 +85,98 @@ def format_int3_value(raw: str) -> str:
 
 
 def add_calendar_to_entry(entry: tk.Entry) -> None:
-    """Abre o seletor de data ao clicar no campo."""
+    """
+    Seletor de data: duplo clique, F4 ou Alt+↓ abrem o calendário.
+    (Antes abria a cada clique, atrapalhando quem só queria digitar/corrigir a data.)
+    """
     from .calendar_dialog import CalendarDialog
-    
-    def open_cal(e):
-        # Abre apenas se não houver um seletor já aberto para este entry (evita múltiplos)
-        if hasattr(entry, "_cal_open") and entry._cal_open:
-            return
+
+    def open_cal(_e=None):
+        if getattr(entry, "_cal_open", False):
+            return "break"
 
         def on_select(date_str):
             entry.delete(0, "end")
             entry.insert(0, date_str)
             entry._cal_open = False
-            # Dispara evento para validar/formatar se necessário
             entry.event_generate("<KeyRelease>")
-        
+            try:
+                entry.focus_set()
+            except Exception:
+                pass
+
         entry._cal_open = True
-        # Encontra o master (toplevel ou root)
         top = entry.winfo_toplevel()
-        cal = CalendarDialog(top, current_date_str=entry.get(), callback=on_select)
-        
+        cal = CalendarDialog(top, current_date_str=entry.get(), callback=on_select, anchor_widget=entry)
+
         def on_close():
             entry._cal_open = False
             cal.destroy()
-        
-        cal.protocol("WM_DELETE_WINDOW", on_close)
 
-    # Bind tanto no clique quanto no foco para facilitar
-    entry.bind("<Button-1>", open_cal, add="+")
+        cal.protocol("WM_DELETE_WINDOW", on_close)
+        cal.bind("<Destroy>", lambda e: setattr(entry, "_cal_open", False), add="+")
+        return "break"
+
+    entry.bind("<Double-Button-1>", open_cal, add="+")
+    entry.bind("<F4>", open_cal, add="+")
+    entry.bind("<Alt-Down>", open_cal, add="+")
+    try:
+        from .utils import create_tooltip
+        create_tooltip(entry, "Digite a data (DD/MM/AAAA) ou dê duplo clique / F4 para abrir o calendário")
+    except Exception:
+        pass
+
+
+_FORMATTERS = {
+    "cpf": lambda v: format_cpf_value(v),
+    "cep": lambda v: format_cep_value(v),
+    "tel": lambda v: format_tel_value(v),
+    "date": lambda v: format_date_br_value(v),
+    "time": lambda v: format_time_value(v),
+    "altura": lambda v: format_altura_value(v),
+    "int3": lambda v: format_int3_value(v),
+}
+
+_IGNORED_KEYS = {
+    "Left", "Right", "Up", "Down", "Home", "End", "Tab", "ISO_Left_Tab",
+    "Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R",
+    "Caps_Lock", "Escape", "Return", "KP_Enter", "Prior", "Next", "F4",
+}
 
 
 def bind_mask(entry: tk.Entry, kind: str) -> None:
-    def on_key_release(_event):
+    formatter = _FORMATTERS.get(kind, lambda v: v)
+
+    def on_key_release(event):
+        # Não reformatar em teclas de navegação (mantém o cursor onde o usuário deixou)
+        if getattr(event, "keysym", "") in _IGNORED_KEYS:
+            return
         val = entry.get()
-        if kind == "cpf":
-            masked = format_cpf_value(val)
-        elif kind == "cep":
-            masked = format_cep_value(val)
-        elif kind == "tel":
-            masked = format_tel_value(val)
-        elif kind == "date":
-            masked = format_date_br_value(val)
-        elif kind == "time":
-            masked = format_time_value(val)
-        elif kind == "altura":
-            masked = format_altura_value(val)
-        elif kind == "int3":
-            masked = format_int3_value(val)
-        else:
-            masked = val
+        masked = formatter(val)
+        if masked == val:
+            return
+        try:
+            cursor = entry.index("insert")
+        except Exception:
+            cursor = len(val)
+        # posição proporcional em dígitos para não jogar o cursor para o fim
+        digits_before = len(_digits(val[:cursor]))
         _apply(entry, masked)
+        pos = 0
+        count = 0
+        for i, ch in enumerate(masked):
+            if count >= digits_before:
+                break
+            if ch.isdigit():
+                count += 1
+            pos = i + 1
+        try:
+            entry.icursor(pos if cursor < len(val) else len(masked))
+        except Exception:
+            pass
 
     entry.bind("<KeyRelease>", on_key_release, add="+")
-    
-    # Se for tipo data, ativa o calendário automático
+
     if kind == "date":
         add_calendar_to_entry(entry)
 

@@ -7,6 +7,15 @@ from .theme import _c, font_body, font_subtitle, font_small, create_view_header,
 from .utils import setup_enter_navigation, create_tooltip
 from .input_masks import bind_mask
 from utils.image_utils import create_circular_image
+from .utils import show_toast
+import app_paths
+
+
+def _fit_size(pil_img, box: int) -> tuple[int, int]:
+    """Tamanho que cabe em box×box mantendo a proporção da imagem."""
+    w, h = pil_img.size
+    scale = box / max(w, h) if max(w, h) else 1
+    return max(1, int(w * scale)), max(1, int(h * scale))
 
 
 class ProfissionalView(ctk.CTkFrame):
@@ -39,7 +48,9 @@ class ProfissionalView(ctk.CTkFrame):
         self.cidade_var = cidade_var
         self.accent_color_var = accent_color_var
         self.selected_logo_path: str | None = None
-        self.foto_perfil_path: str | None = self.current_user.get("foto_perfil") if self.current_user else None
+        _foto = self.current_user.get("foto_perfil") if self.current_user else None
+        _foto_res = app_paths.resolve_data_path(_foto) if _foto else None
+        self.foto_perfil_path: str | None = str(_foto_res) if _foto_res else None
 
         # Layout: Left (Preview Card), Right (Form)
         self.grid_columnconfigure(0, weight=1)  # Left panel (smaller)
@@ -224,9 +235,10 @@ class ProfissionalView(ctk.CTkFrame):
         if logo_path and Path(logo_path).exists():
             try:
                 pil_img = Image.open(logo_path)
-                # Resize for preview (max 100x100)
-                ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(100, 100))
+                # Preview mantendo a proporção (antes a logo era esticada para 100x100)
+                ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=_fit_size(pil_img, 100))
                 self.logo_preview.configure(image=ctk_img, text="")
+                self.logo_preview._image_ref = ctk_img
             except Exception:
                 self.logo_preview.configure(image=None, text="[Erro Imagem]")
         else:
@@ -247,7 +259,7 @@ class ProfissionalView(ctk.CTkFrame):
 
     def on_select_foto_perfil(self):
         file_path = filedialog.askopenfilename(
-            filetypes=[("Imagens", "*.png;*.jpg;*.jpeg")],
+            filetypes=[("Imagens", "*.png *.jpg *.jpeg *.webp *.bmp")],
             title="Selecionar foto de perfil",
         )
         if file_path:
@@ -260,7 +272,7 @@ class ProfissionalView(ctk.CTkFrame):
 
     def on_escolher_logo(self) -> None:
         file_path = filedialog.askopenfilename(
-            filetypes=[("Imagens PNG", "*.png"), ("Todos os arquivos", "*.*")],
+            filetypes=[("Imagens", "*.png *.jpg *.jpeg *.webp"), ("Todos os arquivos", "*.*")],
             title="Selecionar arquivo de logo",
         )
         if not file_path:
@@ -278,15 +290,21 @@ class ProfissionalView(ctk.CTkFrame):
         if logo_input:
             # Check if it's already the target path to avoid copy error
             try:
-                base_dir = Path(__file__).resolve().parent.parent
-                branding_dir = base_dir / "data" / "branding"
+                branding_dir = app_paths.DATA_DIR / "branding"
                 branding_dir.mkdir(parents=True, exist_ok=True)
                 logo_target_path = branding_dir / "logo.png"
+                src = app_paths.resolve_data_path(logo_input) or Path(logo_input)
+                if not Path(src).exists():
+                    messagebox.showwarning("Profissional e Logo", "Arquivo de logo não encontrado. Escolha novamente.")
+                    return
                 
-                # Only copy if the source is different from destination
-                if Path(logo_input).resolve() != logo_target_path.resolve():
-                    from shutil import copyfile
-                    copyfile(logo_input, logo_target_path)
+                # Copia (convertendo para PNG real) somente se a origem for diferente
+                if Path(src).resolve() != logo_target_path.resolve():
+                    try:
+                        Image.open(src).save(logo_target_path, format="PNG")
+                    except Exception:
+                        from shutil import copyfile
+                        copyfile(src, logo_target_path)
                 
                 logo_target = str(logo_target_path)
             except Exception as exc:
@@ -315,8 +333,7 @@ class ProfissionalView(ctk.CTkFrame):
                 final_foto_path = self.foto_perfil_path
                 if self.foto_perfil_path and Path(self.foto_perfil_path).exists():
                     # Verifica se já não está na pasta de media
-                    base_dir = Path(__file__).resolve().parent.parent
-                    media_dir = base_dir / "media" / "usuarios"
+                    media_dir = app_paths.MEDIA_DIR / "usuarios"
                     media_dir.mkdir(parents=True, exist_ok=True)
                     
                     p_src = Path(self.foto_perfil_path)
@@ -329,10 +346,12 @@ class ProfissionalView(ctk.CTkFrame):
                         ext = p_src.suffix or ".png"
                         new_name = f"user_{user_id}_{ts}{ext}"
                         dest_path = media_dir / new_name
-                        shutil.copy2(p_src, dest_path)
+                        shutil.copyfile(p_src, dest_path)
                         final_foto_path = str(dest_path)
-                        # Atualiza a referência local
+                        # Atualiza a referência local (caminho absoluto para preview)
                         self.foto_perfil_path = final_foto_path
+                    # No banco o caminho fica relativo à pasta de dados (portável)
+                    final_foto_path = app_paths.to_storage_path(final_foto_path)
 
                 self.on_update_profile(
                     user_id, 
@@ -344,4 +363,6 @@ class ProfissionalView(ctk.CTkFrame):
                 messagebox.showerror("Erro", f"Erro ao atualizar perfil do usuário: {e}")
                 print(f"Erro ao atualizar perfil do usuário: {e}")
 
-        messagebox.showinfo("Sucesso", "Identidade visual e perfil salvos com sucesso.")
+        self.selected_logo_path = None
+        self._update_preview()
+        show_toast(self, "Identidade visual e perfil salvos", 2500, kind="success")

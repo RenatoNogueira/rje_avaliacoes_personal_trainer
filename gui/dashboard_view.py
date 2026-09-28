@@ -82,18 +82,23 @@ def _saudacao() -> tuple[str, str]:
         return "Boa noite", "🌙"
 
 
+def _idade(nascimento: datetime.date, ref: datetime.date) -> int:
+    """Idade exata em anos completos."""
+    return ref.year - nascimento.year - ((ref.month, ref.day) < (nascimento.month, nascimento.day))
+
+
 class DashboardView(ctk.CTkFrame):
-    def __init__(self, master, get_refresh_seconds=None, cidade_var=None) -> None:
+    def __init__(self, master, get_refresh_seconds=None, cidade_var=None, navigate=None) -> None:
         super().__init__(master)
         self.get_refresh_seconds = get_refresh_seconds or (lambda: 60)
         self.cidade_var = cidade_var
+        self.navigate = navigate or (lambda target: None)
         self.weather_data = None
         self.api_key = "05ccf28850c068aa559dc33c5f4cac4e"
-        
-        # Variáveis para animação
-        self.weather_pulse_val = 24
-        self.weather_pulse_dir = 1
-        self._animate_weather()
+        self._timer_job = None
+        self._alive = True
+        self._last_weather_fetch = 0.0
+        self.bind("<Destroy>", self._on_destroy, add="+")
 
         # Layout Principal
         self.grid_rowconfigure(3, weight=1)
@@ -179,7 +184,7 @@ class DashboardView(ctk.CTkFrame):
             self.cards_frame, col=0,
             icon="👥", title="Total de Alunos", value="0", subtitle="cadastrados",
             bg=_c("card_alunos_bg"), accent=_c("card_alunos_accent"),
-            hover=_c("card_alunos_hover"),
+            hover=_c("card_alunos_hover"), target="alunos",
         )
 
         # Card 2 - Agendamentos Hoje
@@ -187,7 +192,7 @@ class DashboardView(ctk.CTkFrame):
             self.cards_frame, col=1,
             icon="📅", title="Agendamentos Hoje", value="0", subtitle="programados",
             bg=_c("card_agenda_bg"), accent=_c("card_agenda_accent"),
-            hover=_c("card_agenda_hover"),
+            hover=_c("card_agenda_hover"), target="agenda",
         )
 
         # Card 3 - Avaliações do Mês
@@ -195,7 +200,7 @@ class DashboardView(ctk.CTkFrame):
             self.cards_frame, col=2,
             icon="⚖️", title="Avaliações no Mês", value="0", subtitle="realizadas",
             bg=_c("card_aval_bg"), accent=_c("card_aval_accent"),
-            hover=_c("card_aval_hover"),
+            hover=_c("card_aval_hover"), target="avaliacoes",
         )
 
         # Card 4 - Treinos
@@ -203,11 +208,11 @@ class DashboardView(ctk.CTkFrame):
             self.cards_frame, col=3,
             icon="💪", title="Treinos Cadastrados", value="0", subtitle="ativos",
             bg=_c("card_treinos_bg"), accent=_c("card_treinos_accent"),
-            hover=_c("card_treinos_hover"),
+            hover=_c("card_treinos_hover"), target="treinos",
         )
 
     def _make_summary_card(self, parent, col, icon, title, value, subtitle,
-                           bg, accent, hover):
+                           bg, accent, hover, target=None):
         """Cria um card de resumo moderno com accent bar e hover."""
         padx_left = (0, 6) if col == 0 else (6, 6)
         padx_right = (6, 0) if col == 3 else padx_left
@@ -263,6 +268,18 @@ class DashboardView(ctk.CTkFrame):
         for w in [card, content, top_row, lbl_icon, lbl_value, lbl_title, lbl_sub, accent_bar]:
             w.bind("<Enter>", on_enter)
             w.bind("<Leave>", on_leave)
+            if target:
+                # Card clicável: leva direto ao módulo correspondente
+                w.bind("<Button-1>", lambda e, t=target: self.navigate(t))
+                try:
+                    w.configure(cursor="hand2")
+                except Exception:
+                    pass
+
+        if target:
+            from .utils import create_tooltip
+            nomes = {"alunos": "Alunos", "agenda": "a Agenda", "avaliacoes": "Avaliações", "treinos": "Treinos"}
+            create_tooltip(card, f"Clique para abrir {nomes.get(target, target)}")
 
         return card, lbl_value, lbl_sub
 
@@ -480,6 +497,11 @@ class DashboardView(ctk.CTkFrame):
         for w in [card, inner, info_frame, date_box]:
             w.bind("<Enter>", on_enter)
             w.bind("<Leave>", on_leave)
+            w.bind("<Button-1>", lambda e: self.navigate("agenda"))
+            try:
+                w.configure(cursor="hand2")
+            except Exception:
+                pass
 
     # ═══════════════════════════ BIRTHDAY CARD ════════════════════════════
     def _create_bday_card(self, row: dict, index: int) -> None:
@@ -491,7 +513,7 @@ class DashboardView(ctk.CTkFrame):
             mes = dn.month
             dia_str = f"{dia:02d}"
             is_today = (dia == today.day and mes == today.month)
-            idade = today.year - dn.year
+            idade = today.year - dn.year  # idade que completa neste aniversário
         except Exception:
             dia_str = "??"
             is_today = False
@@ -531,7 +553,7 @@ class DashboardView(ctk.CTkFrame):
 
         sub_text = f"Dia {dia_str}"
         if idade > 0:
-            sub_text += f"  •  {idade} anos"
+            sub_text += f"  •  {'faz' if is_today else 'fará'} {idade} anos"
         ctk.CTkLabel(
             info_frame, text=sub_text,
             font=ctk.CTkFont(size=10),
@@ -569,28 +591,51 @@ class DashboardView(ctk.CTkFrame):
 
     # ═══════════════════════════ TIMER ════════════════════════════════════
     def _start_timer(self):
+        # Um único timer por tela; é cancelado quando a tela é destruída.
+        # (Antes cada visita ao Dashboard criava um novo ciclo que nunca parava.)
+        if not self._alive:
+            return
         try:
             secs = int(self.get_refresh_seconds() or 0)
             if secs > 0:
-                self.after(secs * 1000, self._refresh_timer)
+                self._timer_job = self.after(max(10, secs) * 1000, self._refresh_timer)
         except Exception:
             pass
 
     def _refresh_timer(self) -> None:
+        self._timer_job = None
+        if not self._alive:
+            return
         try:
-            self.refresh_data()
+            self.refresh_data(fetch_weather=False)
         finally:
             self._start_timer()
 
+    def _on_destroy(self, event) -> None:
+        if event.widget is not self:
+            return
+        self._alive = False
+        if self._timer_job is not None:
+            try:
+                self.after_cancel(self._timer_job)
+            except Exception:
+                pass
+            self._timer_job = None
+
     # ═══════════════════════════ REFRESH DATA ═════════════════════════════
-    def refresh_data(self) -> None:
-        # Busca clima em thread separada
-        if self.cidade_var:
+    def refresh_data(self, fetch_weather: bool = True) -> None:
+        if not self._alive:
+            return
+        import time
+        # Busca clima em thread separada (no máximo a cada 10 min no refresh automático)
+        if self.cidade_var and (fetch_weather or time.time() - self._last_weather_fetch > 600):
+            self._last_weather_fetch = time.time()
             threading.Thread(target=self._fetch_weather, daemon=True).start()
 
         today = datetime.date.today()
         today_iso = today.isoformat()
         current_month = today.strftime("%m")
+        current_year_month = today.strftime("%Y-%m")
 
         # Atualiza saudação (pode mudar se passou do meio-dia/noite)
         saudacao, emoji = _saudacao()
@@ -646,8 +691,8 @@ class DashboardView(ctk.CTkFrame):
 
         # ── 3. Avaliações no Mês ──
         av_row = db.fetch_one(
-            "SELECT COUNT(*) as total FROM avaliacoes_fisicas WHERE strftime('%m', data) = ?",
-            (current_month,)
+            "SELECT COUNT(*) as total FROM avaliacoes_fisicas WHERE strftime('%Y-%m', data) = ?",
+            (current_year_month,)
         )
         total_av = av_row["total"] if av_row else 0
         if hasattr(self, "lbl_avaliacoes"):
@@ -695,11 +740,9 @@ class DashboardView(ctk.CTkFrame):
             if age_rows:
                 total_years = 0
                 count = 0
-                this_year = today.year
                 for r in age_rows:
                     try:
-                        y = int(r["data_nascimento"][:4])
-                        total_years += (this_year - y)
+                        total_years += _idade(datetime.date.fromisoformat(r["data_nascimento"]), today)
                         count += 1
                     except Exception:
                         pass
@@ -718,12 +761,15 @@ class DashboardView(ctk.CTkFrame):
             cidade = get_current_city()
             
         if not cidade:
-            self.after(0, lambda: self.weather_temp_lbl.configure(text="Localização não detectada"))
+            self._ui(lambda: self.weather_temp_lbl.configure(text="Localização não detectada"))
             return
             
         try:
-            url = f"http://api.openweathermap.org/data/2.5/weather?q={cidade}&appid={self.api_key}&units=metric&lang=pt_br"
-            response = requests.get(url, timeout=5)
+            response = requests.get(
+                "https://api.openweathermap.org/data/2.5/weather",
+                params={"q": cidade, "appid": self.api_key, "units": "metric", "lang": "pt_br"},
+                timeout=5,
+            )
             if response.status_code == 200:
                 data = response.json()
                 temp = int(data["main"]["temp"])
@@ -745,11 +791,26 @@ class DashboardView(ctk.CTkFrame):
                 emoji = emoji_map.get(icon_code, "🌤️")
                 
                 # Agenda atualização da UI na thread principal
-                self.after(0, lambda: self._update_weather_ui(temp, desc, emoji, cidade))
+                self._ui(lambda: self._update_weather_ui(temp, desc, emoji, cidade))
             else:
-                self.after(0, lambda: self.weather_temp_lbl.configure(text="Clima indisponível"))
+                self._ui(lambda: self.weather_temp_lbl.configure(text="Clima indisponível"))
         except Exception:
-            self.after(0, lambda: self.weather_temp_lbl.configure(text="Erro ao carregar clima"))
+            self._ui(lambda: self.weather_temp_lbl.configure(text="Clima indisponível (sem conexão)"))
+
+    def _ui(self, fn) -> None:
+        """Agenda uma atualização de UI vinda de thread, ignorando se a tela já foi fechada."""
+        if not self._alive:
+            return
+        def run():
+            if self._alive:
+                try:
+                    fn()
+                except Exception:
+                    pass
+        try:
+            self.after(0, run)
+        except Exception:
+            pass
 
     def _update_weather_ui(self, temp, desc, emoji, cidade):
         if hasattr(self, "weather_temp_lbl"):
@@ -758,24 +819,3 @@ class DashboardView(ctk.CTkFrame):
             self.weather_desc_lbl.configure(text=f"• {desc}")
         if hasattr(self, "weather_icon_lbl"):
             self.weather_icon_lbl.configure(text=emoji)
-
-    def _animate_weather(self):
-        """Micro-animação de pulsação para o ícone do clima"""
-        if not hasattr(self, "weather_icon_lbl") or not self.weather_icon_lbl.winfo_exists():
-            return
-            
-        # Altera o tamanho da fonte levemente para criar efeito de pulso
-        current_size = self.weather_pulse_val
-        if current_size >= 28:
-            self.weather_pulse_dir = -0.5
-        elif current_size <= 22:
-            self.weather_pulse_dir = 0.5
-            
-        self.weather_pulse_val += self.weather_pulse_dir
-        
-        try:
-            self.weather_icon_lbl.configure(font=ctk.CTkFont(size=int(self.weather_pulse_val)))
-        except Exception:
-            pass
-            
-        self.after(50, self._animate_weather)

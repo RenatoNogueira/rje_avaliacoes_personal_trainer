@@ -4,7 +4,8 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 from .input_masks import bind_mask, format_cpf_value, only_digits
-from .utils import setup_enter_navigation, create_tooltip, show_toast
+from .utils import setup_enter_navigation, create_tooltip, show_toast, bind_live_search, ask_save_pdf, run_pdf_export
+import app_paths
 
 from .theme import _c, font_body, font_subtitle, font_small, create_view_header, create_action_button, create_empty_state, create_section_title, create_status_pill, bind_card_hover
 from database import db
@@ -20,6 +21,7 @@ class AgendaView(ctk.CTkFrame):
         super().__init__(master)
 
         self.selected_id = None
+        self._cards: dict[int, tuple] = {}
         self.alunos_cache: dict[int, str] = {}
         self.get_current_user = get_current_user or (lambda: None)
 
@@ -54,16 +56,26 @@ class AgendaView(ctk.CTkFrame):
         self.entry_data_filtro.grid(row=0, column=1, padx=(0, 5), pady=5, sticky="ew")
         bind_mask(self.entry_data_filtro, "date")
 
-        btn_hoje = ctk.CTkButton(filter_frame, text="Hoje", width=60, command=self.set_data_hoje_filtro, fg_color="gray")
+        btn_hoje = ctk.CTkButton(filter_frame, text="Hoje", width=60, command=self._filtrar_hoje, fg_color="gray")
         btn_hoje.grid(row=0, column=2, padx=(5, 0), pady=5, sticky="w")
+        create_tooltip(btn_hoje, "Mostrar agendamentos de hoje")
+
+        btn_todas = ctk.CTkButton(filter_frame, text="Todas", width=60, command=self._filtrar_todas, fg_color="gray")
+        btn_todas.grid(row=0, column=3, padx=(5, 0), pady=5, sticky="w")
+        create_tooltip(btn_todas, "Limpar filtro de data (mostrar todos os agendamentos)")
+        self.entry_data_filtro.bind("<Return>", lambda e: self.load_agendamentos(), add="+")
 
         # Linha 2: Aluno
         ctk.CTkLabel(filter_frame, text="Aluno:").grid(row=1, column=0, padx=(0, 5), pady=5, sticky="e")
         self.entry_filtro_aluno = ctk.CTkEntry(filter_frame, placeholder_text="Buscar aluno...")
-        self.entry_filtro_aluno.grid(row=1, column=1, columnspan=2, padx=(0, 0), pady=5, sticky="ew")
+        self.entry_filtro_aluno.grid(row=1, column=1, columnspan=3, padx=(0, 0), pady=5, sticky="ew")
+        bind_live_search(self.entry_filtro_aluno, self.load_agendamentos)
 
         btn_filtrar = create_action_button(filter_frame, "Aplicar Filtros", "btn_save", self.load_agendamentos)
-        btn_filtrar.grid(row=2, column=0, columnspan=3, padx=0, pady=(10, 0), sticky="ew")
+        btn_filtrar.grid(row=2, column=0, columnspan=4, padx=0, pady=(10, 0), sticky="ew")
+
+        self.lbl_count = ctk.CTkLabel(filter_frame, text="", font=font_small(), text_color=_c("view_header_subtitle"))
+        self.lbl_count.grid(row=3, column=0, columnspan=4, padx=2, sticky="w")
 
         # Lista (Scrollable)
         self.scroll_list = ctk.CTkScrollableFrame(left_panel, fg_color=_c("panel_bg"), corner_radius=0)
@@ -86,7 +98,7 @@ class AgendaView(ctk.CTkFrame):
         ctk.CTkLabel(form_scroll, text="Aluno:").grid(
             row=row, column=0, padx=10, pady=(10, 5), sticky="e"
         )
-        self.combo_aluno = ctk.CTkComboBox(form_scroll, values=[])
+        self.combo_aluno = ctk.CTkComboBox(form_scroll, values=[], command=lambda _v: None)
         self.combo_aluno.grid(row=row, column=1, padx=10, pady=(10, 5), sticky="ew")
 
         row += 1
@@ -170,10 +182,31 @@ class AgendaView(ctk.CTkFrame):
         self.entry_data_filtro.delete(0, "end")
         self.entry_data_filtro.insert(0, hoje.strftime("%d/%m/%Y"))
 
+    def _filtrar_hoje(self) -> None:
+        self.set_data_hoje_filtro()
+        self.load_agendamentos()
+
+    def _filtrar_todas(self) -> None:
+        self.entry_data_filtro.delete(0, "end")
+        self.load_agendamentos()
+
+    def refresh_data(self) -> None:
+        self.load_agendamentos()
+
+    def _highlight_selected(self) -> None:
+        for aid, (card, bg, hover) in self._cards.items():
+            try:
+                sel = aid == self.selected_id
+                card.configure(fg_color=_c("list_card_selected") if sel else bg,
+                               border_width=2 if sel else 0, border_color=_c("list_card_accent"))
+            except Exception:
+                pass
+
     def load_agendamentos(self) -> None:
         # Limpa lista
         for widget in self.scroll_list.winfo_children():
             widget.destroy()
+        self._cards = {}
 
         data_filtro = self.entry_data_filtro.get().strip()
         data_iso = data_filtro
@@ -182,7 +215,8 @@ class AgendaView(ctk.CTkFrame):
                 d = datetime.datetime.strptime(data_filtro, "%d/%m/%Y").date()
                 data_iso = d.isoformat()
         except Exception:
-            pass
+            show_toast(self, "Data do filtro inválida. Use DD/MM/AAAA.", 2500, kind="warning")
+            return
         aluno_filtro = ""
         if hasattr(self, "entry_filtro_aluno"):
             aluno_filtro = self.entry_filtro_aluno.get().strip()
@@ -222,8 +256,16 @@ class AgendaView(ctk.CTkFrame):
             ORDER BY a.data DESC, a.horario
         """
         
-        # Correção para o parâmetro params, que deve ser tupla
+        # Com data: ordem cronológica do dia. Sem data: próximos primeiro.
+        if data_filtro:
+            query = query.replace("ORDER BY a.data DESC, a.horario", "ORDER BY a.horario")
         rows = db.fetch_all(query, tuple(params))
+
+        total = len(rows)
+        pend = sum(1 for r in rows if r["status"] == "Pendente")
+        self.lbl_count.configure(
+            text=f"{total} agendamento{'s' if total != 1 else ''}" + (f" · {pend} pendente{'s' if pend != 1 else ''}" if total else "")
+        )
 
         if not rows:
             create_empty_state(self.scroll_list, "📅", "Nenhum agendamento encontrado").pack(pady=40)
@@ -231,6 +273,7 @@ class AgendaView(ctk.CTkFrame):
 
         for row in rows:
             self._create_card(row)
+        self._highlight_selected()
 
     def _create_card(self, row: dict) -> None:
         bg = _c("ag_card_bg")
@@ -284,8 +327,11 @@ class AgendaView(ctk.CTkFrame):
         # Bind events
         for w in (card, content_frame, header, lbl_hora, lbl_aluno, details_frame, lbl_tipo):
             w.bind("<Button-1>", lambda e, aid=row["id"]: self.load_agendamento_details(aid))
-            
-        bind_card_hover(card, bg, hover)
+
+        aid = row["id"]
+        card.bind("<Enter>", lambda e, c=card: aid != self.selected_id and c.configure(fg_color=hover))
+        card.bind("<Leave>", lambda e, c=card: aid != self.selected_id and c.configure(fg_color=bg))
+        self._cards[aid] = (card, bg, hover)
 
     def load_agendamento_details(self, agendamento_id: int) -> None:
         self.selected_id = agendamento_id
@@ -305,6 +351,7 @@ class AgendaView(ctk.CTkFrame):
         )
         if row is None:
             return
+        self._highlight_selected()
 
         aluno_str = f"{row['id_aluno']:04d} - {row['nome_aluno']}"
         self.combo_aluno.set(aluno_str)
@@ -330,12 +377,28 @@ class AgendaView(ctk.CTkFrame):
 
     def on_novo(self) -> None:
         self.selected_id = None
+        if hasattr(self, "_cards"):
+            self._highlight_selected()
+
+        # Valores padrão inteligentes: data do filtro (ou hoje), próxima hora cheia,
+        # tipo "Treino" e status "Pendente" — o caso mais comum no dia a dia.
+        agora = datetime.datetime.now()
+        data_padrao = datetime.date.today()
+        try:
+            filtro = self.entry_data_filtro.get().strip()
+            if filtro:
+                data_padrao = datetime.datetime.strptime(filtro, "%d/%m/%Y").date()
+        except Exception:
+            pass
+        proxima_hora = min(agora.hour + 1, 23)
 
         self.combo_aluno.set("")
         self.entry_data.delete(0, "end")
+        self.entry_data.insert(0, data_padrao.strftime("%d/%m/%Y"))
         self.entry_horario.delete(0, "end")
-        self.combo_tipo.set("")
-        self.combo_status.set("")
+        self.entry_horario.insert(0, f"{proxima_hora:02d}:00")
+        self.combo_tipo.set("Treino")
+        self.combo_status.set("Pendente")
 
         if hasattr(self, "label_criado_por"):
             self.label_criado_por.configure(text="Criado por: -")
@@ -399,8 +462,27 @@ class AgendaView(ctk.CTkFrame):
             except Exception:
                 user_id = None
 
+        horario = datetime.time.fromisoformat(horario_str).strftime("%H:%M")
+
+        # Aviso de conflito de horário (mesmo dia e hora, não cancelado)
+        conflito = db.fetch_one(
+            """
+            SELECT al.nome FROM agendamentos a JOIN alunos al ON al.id = a.id_aluno
+            WHERE a.data = ? AND a.horario = ? AND a.status != 'Cancelado' AND a.id != ?
+            LIMIT 1
+            """,
+            (data, horario, self.selected_id or -1),
+        )
+        if conflito is not None and status != "Cancelado":
+            if not messagebox.askyesno(
+                "Conflito de horário",
+                f"Já existe um agendamento em {data_str} às {horario} para {conflito['nome']}.\n\n"
+                "Deseja salvar mesmo assim?",
+            ):
+                return
+
         if self.selected_id is None:
-            db.execute(
+            self.selected_id = db.insert(
                 """
                 INSERT INTO agendamentos
                     (id_aluno, data, horario, tipo, status,
@@ -408,9 +490,10 @@ class AgendaView(ctk.CTkFrame):
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (id_aluno, data, horario, tipo, status, user_id, user_id),
-                commit=True,
             )
+            novo = True
         else:
+            novo = False
             db.execute(
                 """
                 UPDATE agendamentos
@@ -423,18 +506,17 @@ class AgendaView(ctk.CTkFrame):
             )
 
         self.load_agendamentos()
-        messagebox.showinfo("Agenda", "Agendamento salvo com sucesso.")
+        self.load_agendamento_details(self.selected_id)  # atualiza "Criado por/Última atualização"
+        show_toast(self, "Agendamento criado" if novo else "Agendamento atualizado", 2200, kind="success")
 
     def on_excluir(self) -> None:
         if self.selected_id is None:
             show_toast(self, "Selecione um agendamento para excluir.", 3000)
             return
         
-        if not messagebox.askyesno("Confirmar Exclusão", "Tem certeza que deseja excluir este agendamento?"):
+        if not messagebox.askyesno("Confirmar Exclusão", "Tem certeza que deseja excluir este agendamento?", icon="warning"):
             return
-            
-        show_toast(self, "Excluindo agendamento...", 1500)
-        self.after(500, self._confirm_excluir)
+        self._confirm_excluir()
 
     def _confirm_excluir(self):
         db.execute(
@@ -445,7 +527,7 @@ class AgendaView(ctk.CTkFrame):
         self.selected_id = None
         self.on_novo()
         self.load_agendamentos()
-        messagebox.showinfo("Agenda", "Agendamento excluído com sucesso.")
+        show_toast(self, "Agendamento excluído", 2200, kind="success")
 
     def on_gerar_pdf(self) -> None:
         data_filtro = self.entry_data_filtro.get().strip()
@@ -506,15 +588,7 @@ class AgendaView(ctk.CTkFrame):
                 (data_iso,),
             )
 
-        initial_dir = str(Path.cwd())
-        default_filename = f"agenda_{data_iso}.pdf"
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("PDF", "*.pdf")],
-            initialdir=initial_dir,
-            initialfile=default_filename,
-            title="Salvar agenda em PDF",
-        )
+        file_path = ask_save_pdf(self, f"agenda_{data_iso}", "Salvar agenda em PDF")
         if not file_path:
             return
 
@@ -528,33 +602,22 @@ class AgendaView(ctk.CTkFrame):
             # Fallback para settings.json se houver
             try:
                 import json
-                base_dir = Path(__file__).resolve().parent.parent
-                settings_path = base_dir / "data" / "settings.json"
+                settings_path = app_paths.SETTINGS_PATH
                 if settings_path.exists():
                     data = json.loads(settings_path.read_text(encoding="utf-8"))
                     professor_cref = data.get("contato_cref") or ""
             except Exception:
                 pass
 
-        gerar_pdf_agenda(
-            data=data_filtro,
-            agendamentos=rows,
-            professor_cref=professor_cref,
-            output_path=Path(file_path),
+        run_pdf_export(
+            self,
+            lambda: gerar_pdf_agenda(
+                data=data_filtro,
+                agendamentos=[dict(r) for r in rows],
+                professor_cref=professor_cref,
+                output_path=Path(file_path),
+            ),
+            file_path,
         )
 
-        self.load_agendamentos()
-
-    def on_excluir(self) -> None:
-        if self.selected_id is None:
-            return
-
-        db.execute(
-            "DELETE FROM agendamentos WHERE id = ?",
-            (self.selected_id,),
-            commit=True,
-        )
-
-        self.on_novo()
-        self.load_agendamentos()
 

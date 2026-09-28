@@ -3,6 +3,9 @@ from pathlib import Path
 
 import customtkinter as ctk
 
+import app_paths
+from utils.app_support import auto_backup, install_exception_hooks, log
+
 from database import db  # noqa: F401
 from .dashboard_view import DashboardView
 from .alunos_view import AlunosView
@@ -25,12 +28,12 @@ class Application(ctk.CTk):
 
         self.title("RJE Avaliações - Personal Trainer")
         set_window_icon(self)
-        
-        # Maximizar janela ao iniciar
-        try:
-            self.state("zoomed")
-        except:
-            self.geometry("1100x650")
+        install_exception_hooks(self)
+
+        # Tamanho mínimo evita que os painéis se sobreponham em telas pequenas
+        self.minsize(1024, 640)
+        self.geometry("1280x760")
+        self._maximize()
 
         self._init_settings()
         ctk.set_appearance_mode(self.appearance_mode_var.get())
@@ -45,6 +48,7 @@ class Application(ctk.CTk):
         self._create_content_area()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._bind_shortcuts()
 
         self.after(0, self._open_login_dialog)
         
@@ -52,16 +56,31 @@ class Application(ctk.CTk):
         self.updater = Updater(self)
         self.updater.check_for_updates_async(self._on_auto_check_update)
 
-    def _on_auto_check_update(self, has_update: bool) -> None:
+    def _maximize(self) -> None:
+        try:
+            self.state("zoomed")
+        except Exception:
+            try:
+                self.attributes("-zoomed", True)
+            except Exception:
+                pass
+
+    def _on_auto_check_update(self, has_update, error_msg=None) -> None:
         if has_update:
             self.after(0, self._show_update_alert)
 
     def _show_update_alert(self) -> None:
         self.btn_update_avail.grid(row=0, column=1, sticky="e", padx=5)
+        self._blink_count = 0
         self._blink_update_button()
 
     def _blink_update_button(self) -> None:
         if not hasattr(self, "btn_update_avail") or not self.btn_update_avail.winfo_exists():
+            return
+        # Pisca por ~15s e depois fica fixo (piscar indefinidamente distrai o uso)
+        self._blink_count = getattr(self, "_blink_count", 0) + 1
+        if self._blink_count > 25:
+            self.btn_update_avail.configure(fg_color="#f39c12")
             return
             
         if self.update_blink_state:
@@ -233,6 +252,19 @@ class Application(ctk.CTk):
         
         self._apply_branding_to_sidebar()
 
+    def _sidebar_buttons(self):
+        return [
+            (self.btn_dashboard, "dashboard"),
+            (self.btn_alunos, "alunos"),
+            (self.btn_agenda, "agenda"),
+            (self.btn_avaliacoes, "avaliacoes"),
+            (self.btn_treinos, "treinos"),
+            (self.btn_settings, "settings"),
+            (self.btn_profissional, "profissional"),
+            (self.btn_about, "about"),
+            (self.btn_sair, "sair"),
+        ]
+
     def toggle_sidebar(self):
         if self.sidebar_expanded:
             # Colapsar
@@ -246,17 +278,8 @@ class Application(ctk.CTk):
             self.menu_label.grid_remove()
             self.sys_label.grid_remove()
             
-            # Ajustar botões para ícones centralizados e adicionar tooltips
-            self._update_btn_style(self.btn_dashboard, self.btn_map["dashboard"]["icon"], "center", self.btn_map["dashboard"]["tip"])
-            self._update_btn_style(self.btn_alunos, self.btn_map["alunos"]["icon"], "center", self.btn_map["alunos"]["tip"])
-            self._update_btn_style(self.btn_agenda, self.btn_map["agenda"]["icon"], "center", self.btn_map["agenda"]["tip"])
-            self._update_btn_style(self.btn_avaliacoes, self.btn_map["avaliacoes"]["icon"], "center", self.btn_map["avaliacoes"]["tip"])
-            self._update_btn_style(self.btn_treinos, self.btn_map["treinos"]["icon"], "center", self.btn_map["treinos"]["tip"])
-            self._update_btn_style(self.btn_settings, self.btn_map["settings"]["icon"], "center", self.btn_map["settings"]["tip"])
-            self._update_btn_style(self.btn_profissional, self.btn_map["profissional"]["icon"], "center", self.btn_map["profissional"]["tip"])
-            self._update_btn_style(self.btn_about, self.btn_map["about"]["icon"], "center", self.btn_map["about"]["tip"])
-            self._update_btn_style(self.btn_sair, self.btn_map["sair"]["icon"], "center", self.btn_map["sair"]["tip"])
-            
+            for btn, key in self._sidebar_buttons():
+                self._update_btn_style(btn, self.btn_map[key]["icon"], "center", self.btn_map[key]["tip"])
         else:
             # Expandir
             self.sidebar_expanded = True
@@ -269,57 +292,33 @@ class Application(ctk.CTk):
             self.menu_label.grid()
             self.sys_label.grid()
             
-            # Restaurar botões e remover tooltips
-            self._update_btn_style(self.btn_dashboard, self.btn_map["dashboard"]["full"], "w")
-            self._update_btn_style(self.btn_alunos, self.btn_map["alunos"]["full"], "w")
-            self._update_btn_style(self.btn_agenda, self.btn_map["agenda"]["full"], "w")
-            self._update_btn_style(self.btn_avaliacoes, self.btn_map["avaliacoes"]["full"], "w")
-            self._update_btn_style(self.btn_treinos, self.btn_map["treinos"]["full"], "w")
-            self._update_btn_style(self.btn_settings, self.btn_map["settings"]["full"], "w")
-            self._update_btn_style(self.btn_profissional, self.btn_map["profissional"]["full"], "w")
-            self._update_btn_style(self.btn_about, self.btn_map["about"]["full"], "w")
-            self._update_btn_style(self.btn_sair, self.btn_map["sair"]["full"], "w")
+            for btn, key in self._sidebar_buttons():
+                self._update_btn_style(btn, self.btn_map[key]["full"], "w")
 
     def _update_btn_style(self, btn, text, anchor="center", tip_text=None):
-        # Se estamos colapsando (anchor="center"), o texto é o ícone
-        # Se estamos expandindo (anchor="w"), o texto é o label completo
-        
         if anchor == "center":
             # Modo Colapsado: Ícone grande centralizado
-            # Importante: width=0 deixa o botão encolher para caber na sidebar estreita
             btn.configure(text=text, anchor="center", font=ctk.CTkFont(size=24), width=0)
             btn.grid_configure(padx=0)
         else:
             # Modo Expandido: Texto normal alinhado à esquerda
-            # width=None ou um valor fixo se preferir
             btn.configure(text=text, anchor="w", font=ctk.CTkFont(size=13), width=140)
             btn.grid_configure(padx=10)
 
-        # Gerenciamento de Tooltips
+        # Tooltips: criadas uma única vez por botão e apenas habilitadas/desabilitadas.
+        # (Antes uma nova tooltip era criada a cada recolhimento, acumulando binds.)
         btn_id = str(btn)
-        
-        # 1. Tentar remover a tooltip antiga (se existir)
-        # Como não temos acesso direto ao objeto interno da tooltip antiga para destruí-lo explicitamente via API pública,
-        # e a classe ToolTip cria uma Toplevel, precisamos garantir que ela seja destruída.
-        # A nossa implementação de create_tooltip retorna uma instância de ToolTip.
-        
-        old_tooltip = self.tooltips.get(btn_id)
-        if old_tooltip:
-            # Tenta esconder/destruir a janela da tooltip se estiver aberta
+        tip = self.tooltips.get(btn_id)
+        if tip is None and tip_text:
+            tip = create_tooltip(btn, tip_text)
+            self.tooltips[btn_id] = tip
+        if tip is not None:
             try:
-                old_tooltip.hidetip()
+                tip.hidetip()
             except Exception:
                 pass
-            # remove a referência
-            del self.tooltips[btn_id]
-
-        # 2. Se houver novo texto de tooltip, cria uma nova
-        if tip_text:
-            self.tooltips[btn_id] = create_tooltip(btn, tip_text)
-        else:
-            # Se não houver texto (modo expandido), apenas garantimos que não há binds
-            # (O unbind já foi feito acima se existia tooltip anterior)
-            pass
+            tip.text = tip_text or ""
+            tip.enabled = bool(tip_text)
 
     def _create_sidebar_button(self, parent, text: str, command) -> ctk.CTkButton:
         btn = ctk.CTkButton(
@@ -347,15 +346,10 @@ class Application(ctk.CTk):
         self.current_view = None
 
     def _init_settings(self) -> None:
-        base_dir = Path(__file__).resolve().parent.parent
-        data_dir = base_dir / "data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        self._settings_path = data_dir / "settings.json"
+        self._settings_path = app_paths.SETTINGS_PATH
         
         # Define caminho da logo padrão se não houver nas configurações
-        assets_dir = base_dir / "assets"
-        assets_dir.mkdir(exist_ok=True)
-        default_logo = str(assets_dir / "logo_rje.png")
+        default_logo = app_paths.default_logo_path()
 
         defaults = {
             "professor_nome": "",
@@ -369,6 +363,7 @@ class Application(ctk.CTk):
             "cidade": "",  # Empty triggers auto-detection
             "accent_color": "", # Empty = default theme
             "dashboard_refresh_seconds": 60,
+            "last_username": "",
         }
         if self._settings_path.exists():
             try:
@@ -390,8 +385,9 @@ class Application(ctk.CTk):
         if self.accent_color_var.get():
             set_accent_color(self.accent_color_var.get())
         
-        # Garante que use a logo padrão se a config estiver vazia
-        self.logo_path = str(defaults["logo_path"] or default_logo)
+        # Garante que use a logo padrão se a config estiver vazia/inexistente
+        resolved = app_paths.resolve_data_path(defaults["logo_path"]) if defaults["logo_path"] else None
+        self.logo_path = str(resolved) if resolved and Path(resolved).exists() else default_logo
         
         self._logo_image = None
         self.appearance_mode_var = ctk.StringVar(value=defaults["appearance_mode"])
@@ -399,21 +395,29 @@ class Application(ctk.CTk):
         self.dashboard_refresh_seconds_var = ctk.StringVar(
             value=str(defaults.get("dashboard_refresh_seconds", 60))
         )
+        self.last_username = str(defaults.get("last_username") or "")
         self._apply_branding_to_sidebar()
 
-    def _save_settings(self) -> None:
+    def _refresh_seconds(self) -> int:
+        try:
+            return max(0, int(str(self.dashboard_refresh_seconds_var.get()).strip() or 60))
+        except (TypeError, ValueError):
+            return 60
+
+    def _save_settings(self, notify: bool = False) -> None:
         data = {
             "professor_nome": self.professor_nome_var.get().strip(),
             "appearance_mode": self.appearance_mode_var.get(),
             "color_theme": self.color_theme_var.get(),
             "marca_nome": self.marca_nome_var.get().strip(),
-            "logo_path": self.logo_path,
+            "logo_path": app_paths.to_storage_path(self.logo_path) or "",
             "contato_email": self.email_var.get().strip(),
             "contato_telefone": self.telefone_var.get().strip(),
             "contato_cref": self.cref_var.get().strip(),
             "cidade": self.cidade_var.get().strip(),
             "accent_color": self.accent_color_var.get().strip(),
-            "dashboard_refresh_seconds": int(self.dashboard_refresh_seconds_var.get() or 60),
+            "dashboard_refresh_seconds": self._refresh_seconds(),
+            "last_username": getattr(self, "last_username", ""),
         }
         try:
             with self._settings_path.open("w", encoding="utf-8") as f:
@@ -428,11 +432,18 @@ class Application(ctk.CTk):
                 )
                 # Atualiza objeto em memória
                 self.current_user["cidade"] = data["cidade"]
+            if notify:
+                from .utils import show_toast
+                show_toast(self, "Preferências salvas", 2000, kind="success")
         except Exception as e:
-            print(f"Erro ao salvar configurações: {e}")
+            log.error("Erro ao salvar configurações: %s", e)
+            if notify:
+                from tkinter import messagebox
+                messagebox.showerror("Configurações", f"Não foi possível salvar as preferências.\n\n{e}")
 
-    def logout(self) -> None:
-        self._save_settings()
+    def logout(self, save_settings: bool = True) -> None:
+        if save_settings:
+            self._save_settings()
         # Fecha a view atual
         if self.current_view:
             self.current_view.destroy()
@@ -451,11 +462,106 @@ class Application(ctk.CTk):
         self._save_settings()
         self.destroy()
 
+    # ─────────────────────────── Atalhos de teclado ──────────────────────────
+    def _bind_shortcuts(self) -> None:
+        """
+        Atalhos globais (somente na janela principal, não em diálogos):
+          Ctrl+1..7  navegação entre módulos
+          Ctrl+S     salvar            Ctrl+N  novo registro
+          Ctrl+P     gerar PDF         Ctrl+F  focar a busca
+          F5         atualizar lista   Ctrl+B  recolher/expandir menu
+          F1         lista de atalhos
+        """
+        nav = {
+            "1": self.show_dashboard, "2": self.show_alunos, "3": self.show_agenda,
+            "4": self.show_avaliacoes, "5": self.show_treinos, "6": self.show_settings,
+            "7": self.show_profissional,
+        }
+        for key, fn in nav.items():
+            self.bind_all(f"<Control-Key-{key}>", lambda e, f=fn: self._guard(e, f))
+
+        actions = {
+            "<Control-s>": "save", "<Control-S>": "save",
+            "<Control-n>": "new", "<Control-N>": "new",
+            "<Control-p>": "pdf", "<Control-P>": "pdf",
+            "<Control-f>": "search", "<Control-F>": "search",
+            "<F5>": "refresh",
+        }
+        for seq, action in actions.items():
+            self.bind_all(seq, lambda e, a=action: self._guard(e, lambda: self._dispatch_action(a)))
+        self.bind_all("<Control-b>", lambda e: self._guard(e, self.toggle_sidebar))
+        self.bind_all("<F1>", lambda e: self._guard(e, self._show_shortcuts_help))
+
+    def _guard(self, event, fn):
+        """Executa o atalho apenas se o foco estiver na janela principal e logado."""
+        try:
+            if self.current_user is None or self.state() == "withdrawn":
+                return None
+            if event is not None and event.widget.winfo_toplevel() is not self:
+                return None
+        except Exception:
+            return None
+        fn()
+        return "break"
+
+    _ACTION_METHODS = {
+        "save": ("on_salvar", "on_salvar_treino"),
+        "new": ("on_novo", "on_novo_treino"),
+        "pdf": ("on_gerar_pdf",),
+        "refresh": ("refresh_data", "load_alunos_list", "load_agendamentos", "load_avaliacoes", "load_treinos"),
+    }
+    _SEARCH_FIELDS = ("entry_filtro_nome", "entry_filtro_aluno", "entry_filtro_tel")
+
+    def _dispatch_action(self, action: str) -> None:
+        view = self.current_view
+        if view is None:
+            return
+        if action == "search":
+            for attr in self._SEARCH_FIELDS:
+                w = getattr(view, attr, None)
+                if w is not None:
+                    try:
+                        w.focus_set()
+                        w.select_range(0, "end")
+                    except Exception:
+                        pass
+                    return
+            return
+        for name in self._ACTION_METHODS.get(action, ()):
+            fn = getattr(view, name, None)
+            if callable(fn):
+                fn()
+                return
+
+    def _show_shortcuts_help(self) -> None:
+        from tkinter import messagebox
+        messagebox.showinfo(
+            "Atalhos de teclado",
+            "Navegação\n"
+            "  Ctrl+1  Dashboard        Ctrl+2  Alunos\n"
+            "  Ctrl+3  Agenda           Ctrl+4  Avaliações\n"
+            "  Ctrl+5  Treinos          Ctrl+6  Configurações\n"
+            "  Ctrl+7  Profissional     Ctrl+B  Recolher menu\n\n"
+            "Ações na tela atual\n"
+            "  Ctrl+N  Novo registro    Ctrl+S  Salvar\n"
+            "  Ctrl+P  Gerar PDF        Ctrl+F  Buscar\n"
+            "  F5      Atualizar        Esc     Limpar busca\n\n"
+            "Campos de data\n"
+            "  Duplo clique ou F4 abre o calendário\n"
+            "  Enter avança para o próximo campo",
+            parent=self,
+        )
+
     def _show_view(self, view_class, **kwargs) -> None:
         if self.current_view is not None:
             self.current_view.destroy()
-        self.current_view = view_class(self.content, **kwargs)
-        self.current_view.grid(row=0, column=0, sticky="nsew")
+        self.configure(cursor="watch")
+        self.update_idletasks()
+        try:
+            self.current_view = view_class(self.content, **kwargs)
+            self.current_view.grid(row=0, column=0, sticky="nsew")
+        finally:
+            self.configure(cursor="")
         self._update_sidebar_selection(view_class)
 
     def _update_sidebar_selection(self, active_view_class) -> None:
@@ -501,11 +607,25 @@ class Application(ctk.CTk):
     def show_dashboard(self) -> None:
         self._show_view(
             DashboardView,
-            get_refresh_seconds=lambda: max(
-                0, int(self.dashboard_refresh_seconds_var.get() or 60)
-            ),
+            get_refresh_seconds=self._refresh_seconds,
             cidade_var=self.cidade_var,
+            navigate=self.navigate,
         )
+
+    def navigate(self, target: str) -> None:
+        """Navegação programática (ex.: clicar em um card do dashboard)."""
+        routes = {
+            "dashboard": self.show_dashboard,
+            "alunos": self.show_alunos,
+            "agenda": self.show_agenda,
+            "avaliacoes": self.show_avaliacoes,
+            "treinos": self.show_treinos,
+            "settings": self.show_settings,
+            "profissional": self.show_profissional,
+        }
+        fn = routes.get(target)
+        if fn:
+            fn()
 
     def show_alunos(self) -> None:
         self._show_view(AlunosView)
@@ -617,6 +737,7 @@ class Application(ctk.CTk):
             
             # Recarrega configurações se necessário
             self._init_settings()
+            self.last_username = user_data.get("username") or ""
             
             # Sincroniza o nome do professor se ainda não estiver preenchido
             if not self.professor_nome_var.get().strip():
@@ -637,15 +758,19 @@ class Application(ctk.CTk):
                 pass
 
             self._apply_branding_to_sidebar()
+            self._update_user_badge()
+            self._save_settings()
             
             # Mostra a janela principal
             self.deiconify()
-            self.state("zoomed") # Garante maximizado
+            self._maximize()  # Garante maximizado
             self.lift()
             
-            # Reconstrói a sidebar para atualizar permissões (ex: botão settings) se necessário
-            # Mas como a sidebar é fixa, talvez só precise atualizar o conteúdo da dashboard
             self.show_dashboard()
+
+            # Backup automático diário (silencioso) e alerta de senha padrão
+            self.after(1500, lambda: auto_backup(db))
+            self.after(800, self._warn_default_password)
 
         def on_cancel():
             # Se cancelar no login e não tiver usuário logado, fecha o app
@@ -655,10 +780,41 @@ class Application(ctk.CTk):
                 # Se já estava logado (improvável nesse fluxo), apenas fecha o dialog
                 pass
 
-        self._login_window = LoginDialog(self, on_login_success, on_cancel)
+        self._login_window = LoginDialog(self, on_login_success, on_cancel,
+                                         last_username=getattr(self, "last_username", ""))
         
         # Tenta aplicar ícone
         set_window_icon(self._login_window, getattr(self, "logo_path", None))
+
+    def _update_user_badge(self) -> None:
+        """Mostra quem está logado no cabeçalho do menu lateral."""
+        if not self.current_user:
+            self.subtitle_label.configure(text="Personal Trainer")
+            return
+        nome = self.current_user.get("nome") or self.current_user.get("username") or ""
+        papel = "Administrador" if self.current_user.get("is_admin") else "Personal Trainer"
+        self.subtitle_label.configure(text=f"👤 {nome} · {papel}")
+        try:
+            create_tooltip(self.subtitle_label, "Usuário conectado. F1 mostra os atalhos de teclado.")
+        except Exception:
+            pass
+
+    def _warn_default_password(self) -> None:
+        try:
+            if not self.current_user:
+                return
+            if db.is_default_admin_password(int(self.current_user["id"])):
+                from tkinter import messagebox
+                if messagebox.askyesno(
+                    "Segurança",
+                    "Você está usando a senha padrão do administrador (admin).\n\n"
+                    "Recomendamos alterá-la agora para proteger os dados dos seus alunos.\n\n"
+                    "Abrir a tela para alterar a senha?",
+                    parent=self,
+                ):
+                    self.show_settings()
+        except Exception as exc:
+            log.warning("Falha ao verificar senha padrão: %s", exc)
 
     def _set_branding(self, logo_path: str, marca: str, email: str, telefone: str, cref: str, accent_color: str = None) -> None:
         self.logo_path = logo_path or ""

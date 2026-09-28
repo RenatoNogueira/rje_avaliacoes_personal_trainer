@@ -1,6 +1,6 @@
 # RJE Avaliações - Sistema de Gestão para Personal Trainers
 
-**Versão:** v1.0.33
+**Versão:** v1.1.0  (veja [MELHORIAS_v1.1.0.md](MELHORIAS_v1.1.0.md))
   
 **Desenvolvido por:** RJE Tecnologia
 
@@ -47,7 +47,8 @@ O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Pytho
     *   **Administrador:** Acesso total, incluindo gestão de outros usuários.
     *   **Personal:** Acesso às funcionalidades de gestão de alunos e treinos.
 *   **Usuário Trial:** Possibilidade de criar usuários com acesso temporário de 30 dias para demonstração.
-*   **Backup:** Ferramentas integradas para backup e restauração do banco de dados SQLite.
+*   **Backup:** backup completo em .zip (banco, fotos e configurações), restauração validada e backup automático diário.
+*   **Senhas:** armazenadas com PBKDF2-SHA256 + salt.
 
 ### 7. **Interface Moderna e Responsiva**
 *   Desenvolvido com **CustomTkinter** para uma aparência moderna (Dark/Light mode).
@@ -59,6 +60,21 @@ O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Pytho
 *   Notificação visual quando uma nova versão está disponível.
 *   Atualização "One-Click" que baixa e aplica as novidades automaticamente.
 
+### 9. **Atalhos de Teclado** (F1 mostra a lista)
+*   `Ctrl+1..7` navega entre os módulos · `Ctrl+N` novo · `Ctrl+S` salvar · `Ctrl+P` PDF · `Ctrl+F` buscar · `F5` atualizar · `Ctrl+B` recolher menu.
+*   Campos de data: duplo clique ou `F4` abre o calendário.
+
+---
+
+## 💾 Onde ficam os dados
+
+| Execução | Pasta |
+|---|---|
+| Executável instalado | `C:\ProgramData\RJE Avaliacoes` (`data\`, `media\`, `backups\`, `logs\`) |
+| Código-fonte (`python main.py`) | pasta do projeto (`data\`, `media\`) |
+
+A variável de ambiente `RJE_DATA_DIR` permite usar outra pasta. Dados de versões antigas (`_internal\data`) são migrados automaticamente na primeira execução.
+
 ---
 
 ## 🛠️ Tecnologias Utilizadas
@@ -67,7 +83,6 @@ O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Pytho
 *   **Interface Gráfica:** CustomTkinter (Baseado em Tkinter)
 *   **Banco de Dados:** SQLite 3
 *   **Relatórios:** FPDF2
-*   **Gráficos:** Matplotlib
 *   **Manipulação de Imagens:** Pillow (PIL)
 
 ---
@@ -99,15 +114,23 @@ O **RJE Avaliações** é um software completo e intuitivo desenvolvido em Pytho
     python main.py
     ```
 
+5.  **Gerar executável + instalador (Windows):**
+    ```powershell
+    powershell -ExecutionPolicy Bypass -File .\build_release.ps1
+    ```
+    Resultado em `output\` (`RJE_Avaliacoes_Setup.exe` e o `.zip` para o atualizador).
+
 ---
 
 ## 📂 Estrutura de Arquivos
 
 *   `main.py`: Ponto de entrada da aplicação.
+*   `app_paths.py`: Resolução de caminhos (recursos x dados do usuário) e migração de dados antigos.
 *   `database.py`: Gerenciamento do banco de dados e migrações.
 *   `gui/`: Telas e componentes da interface gráfica.
 *   `reports/`: Lógica de geração de PDFs.
-*   `utils/`: Utilitários (atualizador, tooltips, formatação).
+*   `utils/`: Utilitários (atualizador, log/erros/backup automático, imagens).
+*   `rje_avaliacoes.spec` / `installer.iss`: build do executável e do instalador.
 *   `data/`: Armazenamento local (banco de dados, configurações, backups).
 
 ---

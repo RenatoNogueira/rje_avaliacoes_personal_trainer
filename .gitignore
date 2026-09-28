@@ -1,31 +1,65 @@
-# Python
+# ============================================================================
+#  RJE Avaliações — versiona apenas o essencial: código-fonte, recursos,
+#  documentação e scripts de build. Tudo que é gerado, local ou sensível fica fora.
+# ============================================================================
+
+# ── Segredos (NUNCA versionar) ──────────────────────────────────────────────
+.env
+*.env
+*.pfx
+*.p12
+
+# ── Dados do usuário (banco, fotos, backups, logs) ──────────────────────────
+data/
+media/
+backups/
+logs/
+*.db
+*.db-journal
+*.sqlite3
+settings.json
+custom_settings.json
+*.log
+
+# ── Artefatos de build e distribuição ───────────────────────────────────────
+build/
+dist/
+dist_final/
+output/
+_internal/
+*.exe
+*.zip
+update_temp/
+update_temp_exe/
+update_script.bat
+*.spec
+!rje_avaliacoes.spec
+
+# ── Scripts de diagnóstico/teste e arquivos avulsos (uso local) ─────────────
+debug_*.py
+verify_github*.py
+*test_updater*.py
+mock_*.py
+diag*.txt
+test_image.png
+build_script.py
+create_spec.py
+install.ps1
+
+# ── Fontes não utilizadas pelo sistema ──────────────────────────────────────
+fonts/
+
+# ── Python / ambiente ───────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Ambiente Virtual
 .venv/
 venv/
 env/
 
-# Banco de Dados e Configurações Locais
-*.db
-*.sqlite3
-data/
-settings.json
-custom_settings.json
-.env
-
-# Logs e Temporários
-*.log
-update_temp/
-update.zip
-
-# IDEs
+# ── IDEs / SO ───────────────────────────────────────────────────────────────
 .vscode/
 .idea/
-
-# Distribuição
-dist/
-build/
-*.spec
+Thumbs.db
+desktop.ini
+.DS_Store

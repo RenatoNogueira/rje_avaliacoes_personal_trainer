@@ -5,11 +5,23 @@ from .theme import _c, font_subtitle, font_body
 from .utils import set_window_icon
 
 class CalendarDialog(ctk.CTkToplevel):
-    def __init__(self, master, current_date_str=None, callback=None):
+    def __init__(self, master, current_date_str=None, callback=None, anchor_widget=None):
         super().__init__(master)
         
         self.title("Selecionar Data")
         self.geometry("380x420")
+        # Posiciona próximo ao campo de origem (evita o usuário "procurar" o diálogo)
+        if anchor_widget is not None:
+            try:
+                anchor_widget.update_idletasks()
+                x = anchor_widget.winfo_rootx()
+                y = anchor_widget.winfo_rooty() + anchor_widget.winfo_height() + 4
+                sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+                x = max(0, min(x, sw - 400))
+                y = max(0, min(y, sh - 460))
+                self.geometry(f"380x420+{x}+{y}")
+            except Exception:
+                pass
         self.resizable(False, False)
         set_window_icon(self, getattr(master, "logo_path", None))
         
@@ -94,6 +106,14 @@ class CalendarDialog(ctk.CTkToplevel):
             text_color=_c("view_header_title"), command=self.destroy
         )
         self.btn_cancel.pack(side="right")
+
+        # Atalhos de teclado
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.bind("<Prior>", lambda e: self.prev_month())   # Page Up
+        self.bind("<Next>", lambda e: self.next_month())    # Page Down
+        self.bind("<Return>", lambda e: self.select_day(self.selected_date.day)
+                  if (self.view_month, self.view_year) == (self.selected_date.month, self.selected_date.year)
+                  else None)
 
     def render_calendar(self):
         # Limpa botões antigos

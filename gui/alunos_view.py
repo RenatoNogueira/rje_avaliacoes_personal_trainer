@@ -4,7 +4,8 @@ from tkinter import messagebox
 import re
 import customtkinter as ctk
 from .input_masks import bind_mask, is_valid_cpf, is_valid_cep, format_cpf_value, format_cep_value, only_digits
-from .utils import setup_enter_navigation, create_tooltip, show_toast, delete_folder_recursive
+from .utils import setup_enter_navigation, create_tooltip, show_toast, delete_folder_recursive, bind_live_search
+import app_paths
 
 from database import db
 
@@ -18,6 +19,7 @@ class AlunosView(ctk.CTkFrame):
 
         self.selected_id = None
         self.foto_perfil_path = None # Armazena caminho da foto selecionada
+        self._cards: dict[int, tuple] = {}
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -44,12 +46,16 @@ class AlunosView(ctk.CTkFrame):
         filter_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
         filter_frame.grid_columnconfigure(0, weight=1)
 
-        self.entry_filtro_nome = ctk.CTkEntry(filter_frame, placeholder_text="🔍 Buscar por nome...")
+        self.entry_filtro_nome = ctk.CTkEntry(filter_frame, placeholder_text="🔍 Buscar por nome, CPF ou telefone...")
         self.entry_filtro_nome.grid(row=0, column=0, padx=(0, 5), pady=5, sticky="ew")
-        self.entry_filtro_nome.bind("<Return>", lambda e: self.load_alunos())
+        # Busca enquanto digita (Enter aplica na hora, Esc limpa)
+        bind_live_search(self.entry_filtro_nome, self.load_alunos)
 
         btn_filtrar = ctk.CTkButton(filter_frame, text="Filtrar", width=80, command=self.load_alunos)
         btn_filtrar.grid(row=0, column=1, padx=(5, 0), pady=5, sticky="e")
+
+        self.lbl_count = ctk.CTkLabel(filter_frame, text="", font=font_small(), text_color=_c("view_header_subtitle"))
+        self.lbl_count.grid(row=1, column=0, columnspan=2, padx=2, sticky="w")
 
         # Lista (Scrollable)
         self.scroll_list = ctk.CTkScrollableFrame(left_panel, fg_color=_c("panel_bg"), corner_radius=0)
@@ -187,25 +193,54 @@ class AlunosView(ctk.CTkFrame):
         for widget in self.scroll_list.winfo_children():
             widget.destroy()
 
+        self._cards = {}
         filtro = self.entry_filtro_nome.get().strip()
         query = "SELECT id, nome, data_nascimento, telefone, cpf, foto_perfil, instagram FROM alunos"
         params = []
         
         if filtro:
-            query += " WHERE nome LIKE ?"
+            digits = only_digits(filtro)
+            conds = ["nome LIKE ?"]
             params.append(f"%{filtro}%")
+            if digits and len(digits) >= 3:
+                # Permite localizar por CPF ou telefone digitando só números
+                conds.append("cpf LIKE ?")
+                params.append(f"%{digits}%")
+                conds.append("replace(replace(replace(replace(telefone,'(',''),')',''),'-',''),' ','') LIKE ?")
+                params.append(f"%{digits}%")
+            query += " WHERE " + " OR ".join(conds)
         
-        query += " ORDER BY nome"
+        query += " ORDER BY nome COLLATE NOCASE"
         
         rows = db.fetch_all(query, tuple(params))
 
+        total = len(rows)
+        self.lbl_count.configure(
+            text=f"{total} aluno{'s' if total != 1 else ''}" + (" encontrado" + ("s" if total != 1 else "") if filtro else "")
+        )
+
         if not rows:
-            create_empty_state(self.scroll_list, "👤", "Nenhum aluno encontrado").pack(pady=40)
+            msg = "Nenhum aluno encontrado" if filtro else "Nenhum aluno cadastrado ainda.\nClique em \"+ Novo Aluno\" para começar."
+            create_empty_state(self.scroll_list, "👤", msg).pack(pady=40)
             return
 
         for row in rows:
             self._create_card(row)
+        self._highlight_selected()
 
+    def refresh_data(self) -> None:
+        self.load_alunos()
+
+    def _highlight_selected(self) -> None:
+        """Destaca na lista o aluno que está aberto no formulário."""
+        for aid, (card, bg, hover) in self._cards.items():
+            try:
+                selected = aid == self.selected_id
+                card.configure(fg_color=_c("list_card_selected") if selected else bg,
+                               border_width=2 if selected else 0,
+                               border_color=_c("list_card_accent"))
+            except Exception:
+                pass
     def _create_card(self, row: dict) -> None:
         bg = _c("list_card_bg")
         hover = _c("list_card_hover")
@@ -223,7 +258,7 @@ class AlunosView(ctk.CTkFrame):
         content_frame.pack(side="left", fill="both", expand=True, padx=8, pady=8)
         
         # Foto (Miniatura Circular)
-        foto_path = row["foto_perfil"]
+        foto_path = app_paths.resolve_data_path(row["foto_perfil"])
         lbl_foto = ctk.CTkLabel(content_frame, text="👤", width=40, height=40, font=ctk.CTkFont(size=18), fg_color="gray50", corner_radius=20)
         
         if foto_path:
@@ -269,8 +304,18 @@ class AlunosView(ctk.CTkFrame):
         # Bind events
         for w in (card, content_frame, lbl_foto, info_frame, lbl_nome, lbl_details):
             w.bind("<Button-1>", lambda e, aid=row["id"]: self.load_aluno_details(aid))
-            
-        bind_card_hover(card, bg, hover)
+
+        # Hover que respeita o destaque do item selecionado
+        aid = row["id"]
+        def _enter(_e, c=card):
+            if aid != self.selected_id:
+                c.configure(fg_color=hover)
+        def _leave(_e, c=card):
+            if aid != self.selected_id:
+                c.configure(fg_color=bg)
+        card.bind("<Enter>", _enter)
+        card.bind("<Leave>", _leave)
+        self._cards[aid] = (card, bg, hover)
 
 
     def load_aluno_details(self, aluno_id: int) -> None:
@@ -285,6 +330,7 @@ class AlunosView(ctk.CTkFrame):
         )
         if row is None:
             return
+        self._highlight_selected()
 
         # Foto
         self.foto_perfil_path = row["foto_perfil"]
@@ -334,6 +380,7 @@ class AlunosView(ctk.CTkFrame):
 
     def on_novo(self) -> None:
         self.selected_id = None
+        self._highlight_selected()
         
         self.foto_perfil_path = None
         self._update_foto_preview(None)
@@ -353,6 +400,7 @@ class AlunosView(ctk.CTkFrame):
         self.text_obs_medicas.configure(state="normal")
         self.text_obs_medicas.delete("1.0", "end")
         self.text_obs_medicas.configure(state="normal")
+        self.entry_nome.focus_set()
 
     def on_select_foto(self):
         from customtkinter import filedialog
@@ -369,6 +417,7 @@ class AlunosView(ctk.CTkFrame):
         self._update_foto_preview(None)
 
     def _update_foto_preview(self, path):
+        path = app_paths.resolve_data_path(path) if path else None
         if path:
             try:
                 from pathlib import Path
@@ -426,6 +475,7 @@ class AlunosView(ctk.CTkFrame):
 
         if not nome:
             messagebox.showwarning("Alunos", "O nome do aluno é obrigatório.")
+            self.entry_nome.focus_set()
             return
 
         # Telefone: se informado, validar DDD (não inicia com 0) e comprimento (10 ou 11 dígitos)
@@ -462,8 +512,10 @@ class AlunosView(ctk.CTkFrame):
                 )
                 return
 
+        foto_db = self._store_foto(self.foto_perfil_path)
+
         if self.selected_id is None:
-            db.execute(
+            self.selected_id = db.insert(
                 """
                 INSERT INTO alunos
                     (nome, data_nascimento, telefone, email, objetivo, observacoes_medicas, cpf, cep, foto_perfil, instagram, sexo)
@@ -478,13 +530,14 @@ class AlunosView(ctk.CTkFrame):
                     observacoes_medicas,
                     only_digits(cpf) if cpf else None,
                     only_digits(cep) if cep else None,
-                    self.foto_perfil_path,
+                    foto_db,
                     instagram,
                     sexo
                 ),
-                commit=True,
             )
+            novo = True
         else:
+            novo = False
             db.execute(
                 """
                 UPDATE alunos
@@ -502,7 +555,7 @@ class AlunosView(ctk.CTkFrame):
                     observacoes_medicas,
                     only_digits(cpf) if cpf else None,
                     only_digits(cep) if cep else None,
-                    self.foto_perfil_path,
+                    foto_db,
                     instagram,
                     sexo,
                     self.selected_id,
@@ -510,20 +563,45 @@ class AlunosView(ctk.CTkFrame):
                 commit=True,
             )
 
+        self.foto_perfil_path = foto_db
         self.load_alunos()
+        show_toast(self, "Aluno cadastrado com sucesso" if novo else "Alterações salvas", 2200, kind="success")
 
-        messagebox.showinfo("Alunos", "Dados do aluno salvos com sucesso.")
+    def _store_foto(self, path):
+        """Copia a foto escolhida para a pasta de dados do sistema (se ainda não estiver lá)."""
+        if not path:
+            return None
+        try:
+            import shutil, time
+            from pathlib import Path
+            src = app_paths.resolve_data_path(path)
+            if src is None or not Path(src).exists():
+                return path
+            dest_dir = app_paths.MEDIA_DIR / "alunos"
+            if dest_dir.resolve() in Path(src).resolve().parents:
+                return app_paths.to_storage_path(src)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / f"aluno_{int(time.time())}{Path(src).suffix.lower() or '.jpg'}"
+            shutil.copyfile(src, dest)
+            return app_paths.to_storage_path(dest)
+        except Exception:
+            return path
 
     def on_excluir(self) -> None:
         if self.selected_id is None:
             show_toast(self, "Selecione um aluno para excluir.", 3000)
             return
 
-        if not messagebox.askyesno("Confirmar Exclusão", "Tem certeza que deseja excluir este aluno e todos os seus dados?"):
+        nome = self.entry_nome.get().strip() or "este aluno"
+        if not messagebox.askyesno(
+            "Confirmar Exclusão",
+            f"Excluir {nome}?\n\nIsso remove também as avaliações, treinos e agendamentos "
+            "vinculados. Esta ação não pode ser desfeita.",
+            icon="warning",
+        ):
             return
 
-        show_toast(self, "Excluindo aluno...", 1500)
-        self.after(500, self._confirm_excluir)
+        self._confirm_excluir()
 
     def _confirm_excluir(self):
         # Cleanup physical files before deleting from DB if needed, 
@@ -531,9 +609,7 @@ class AlunosView(ctk.CTkFrame):
         import os
         from pathlib import Path
         
-        # Determine base directory
-        base_dir = Path(__file__).resolve().parent.parent
-        aluno_media_dir = base_dir / "media" / "avaliacoes" / str(self.selected_id)
+        aluno_media_dir = app_paths.MEDIA_DIR / "avaliacoes" / str(self.selected_id)
         
         # Delete evaluation photos folder
         delete_folder_recursive(aluno_media_dir)
@@ -548,4 +624,4 @@ class AlunosView(ctk.CTkFrame):
         self.on_novo()
         self.load_alunos()
 
-        messagebox.showinfo("Alunos", "Aluno excluído com sucesso.")
+        show_toast(self, "Aluno excluído", 2200, kind="success")

@@ -25,7 +25,8 @@ def set_window_icon(window, logo_path=None):
     
     # 1. Se foi passado um logo específico (ex: das configurações)
     if logo_path:
-        lp = Path(logo_path)
+        from app_paths import resolve_data_path
+        lp = resolve_data_path(logo_path) or Path(logo_path)
         if lp.exists():
             candidates.append(str(lp))
         elif (base_dir / lp).exists():
@@ -87,8 +88,11 @@ class ToolTip(object):
         self.widget.bind("<ButtonPress>", self.leave)
         self.id = None
         self.tw = None
+        self.enabled = True
 
     def enter(self, event=None):
+        if not self.enabled or not self.text:
+            return
         try:
             self.schedule()
         except Exception:
@@ -112,22 +116,31 @@ class ToolTip(object):
             self.widget.after_cancel(id)
 
     def showtip(self, event=None):
-        x = y = 0
-        x, y, cx, cy = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 20
-        
-        # Cria janela de tooltip
-        self.tw = tk.Toplevel(self.widget)
-        self.tw.wm_overrideredirect(True)
-        self.tw.wm_geometry("+%d+%d" % (x, y))
-        
-        label = tk.Label(self.tw, text=self.text, justify='left',
-                       background=_c("card_bg")[1] if ctk.get_appearance_mode() == "Dark" else _c("card_bg")[0], 
-                       foreground=_c("view_header_title")[1] if ctk.get_appearance_mode() == "Dark" else _c("view_header_title")[0],
-                       relief='solid', borderwidth=1,
-                       wraplength = self.wraplength, font=("Inter", "9"))
-        label.pack(ipadx=1)
+        try:
+            if not self.widget.winfo_exists():
+                return
+            x = self.widget.winfo_rootx() + 25
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+
+            # Cria janela de tooltip
+            self.hidetip()
+            self.tw = tk.Toplevel(self.widget)
+            self.tw.wm_overrideredirect(True)
+            self.tw.wm_geometry("+%d+%d" % (x, y))
+            try:
+                self.tw.attributes("-topmost", True)
+            except Exception:
+                pass
+
+            dark = ctk.get_appearance_mode() == "Dark"
+            label = tk.Label(self.tw, text=self.text, justify='left',
+                           background=_c("card_bg")[1 if dark else 0],
+                           foreground=_c("view_header_title")[1 if dark else 0],
+                           relief='solid', borderwidth=1,
+                           wraplength=self.wraplength, font=("Segoe UI", 9), padx=6, pady=3)
+            label.pack(ipadx=1)
+        except Exception:
+            self.tw = None
 
     def hidetip(self):
         tw = self.tw
@@ -140,59 +153,186 @@ def create_tooltip(widget, text):
     toolTip = ToolTip(widget, text)
     return toolTip
 
-def show_toast(master, message, duration=2000):
+_TOAST_COLORS = {
+    "info": ("#334155", "#334155"),
+    "success": ("#15803d", "#16a34a"),
+    "error": ("#b91c1c", "#dc2626"),
+    "warning": ("#b45309", "#d97706"),
+}
+
+
+def show_toast(master, message, duration=2000, kind="info"):
     """
-    Exibe uma mensagem temporária (Toast) na parte inferior da tela.
+    Exibe uma mensagem temporária (Toast) na parte inferior da janela,
+    sem bloquear o usuário. ``kind``: info | success | error | warning.
     """
     import os
     try:
-        # Cria uma janela Toplevel sem bordas
-        toast = ctk.CTkToplevel(master)
+        root = master.winfo_toplevel()
+        # Remove toast anterior para não empilhar janelas
+        old = getattr(root, "_active_toast", None)
+        if old is not None:
+            try:
+                old.destroy()
+            except Exception:
+                pass
+
+        toast = ctk.CTkToplevel(root)
         toast.wm_overrideredirect(True)
-        
-        # Cor mágica para transparência (pink/magenta raramente usado na UI)
-        trans_color = "#f0f0ff" 
-        
-        # Corrige o "quadrado preto" no Windows ajustando a transparência de forma robusta
+        root._active_toast = toast
+
+        trans_color = "#f0f0ff"
         if os.name == "nt":
             toast.configure(fg_color=trans_color)
             toast.attributes("-transparentcolor", trans_color)
-            # toast.attributes("-alpha", 0.95) # Alpha pode conflitar com transparentcolor em alguns sistemas
-        
-        # Posiciona no centro inferior da tela relativo à janela MASTER
-        # winfo_rootx/y retorna a posição da janela na tela
-        m_x = master.winfo_rootx()
-        m_y = master.winfo_rooty()
-        m_w = master.winfo_width()
-        m_h = master.winfo_height()
-        
-        # Tamanho do toast
-        toast_w = 340
+
+        root.update_idletasks()
+        m_x = root.winfo_rootx()
+        m_y = root.winfo_rooty()
+        m_w = root.winfo_width()
+        m_h = root.winfo_height()
+
+        toast_w = max(340, min(640, 12 * len(str(message)) + 60))
         toast_h = 44
-        
+
         pos_x = m_x + (m_w - toast_w) // 2
-        pos_y = m_y + m_h - 70 # 70 pixels acima da borda inferior da janela
-        
+        pos_y = m_y + m_h - 80
+
         toast.geometry(f"{toast_w}x{toast_h}+{pos_x}+{pos_y}")
-        
-        # Frame e Label (O frame deve ter uma cor sólida diferente da trans_color)
-        bg_pill = _c("view_header_icon")[1] if ctk.get_appearance_mode() == "Dark" else _c("view_header_icon")[0]
-        
+
+        colors = _TOAST_COLORS.get(kind, _TOAST_COLORS["info"])
+        mode_idx = 1 if ctk.get_appearance_mode() == "Dark" else 0
+        bg_pill = colors[mode_idx]
+
         frame = ctk.CTkFrame(toast, fg_color=bg_pill, corner_radius=22)
         frame.pack(fill="both", expand=True, padx=2, pady=2)
-        
-        label = ctk.CTkLabel(frame, text=message, text_color="white", font=ctk.CTkFont(family="Inter", size=13, weight="bold"))
+
+        icon = {"success": "✔", "error": "✖", "warning": "⚠"}.get(kind, "ℹ")
+        label = ctk.CTkLabel(
+            frame,
+            text=f"{icon}  {message}",
+            text_color="white",
+            font=ctk.CTkFont(size=13, weight="bold"),
+        )
         label.pack(expand=True, fill="both", padx=20)
-        
-        # Fecha após duration ms
-        toast.after(duration, toast.destroy)
-        
-        # Tenta colocar no topo
+
+        def _close(_e=None):
+            try:
+                toast.destroy()
+            except Exception:
+                pass
+
+        label.bind("<Button-1>", _close)
+        frame.bind("<Button-1>", _close)
+        toast.after(duration, _close)
+
         toast.lift()
         toast.attributes("-topmost", True)
-        
+
     except Exception as e:
         print(f"Erro ao exibir toast: {e}")
+
+
+def debounce(widget, callback, delay_ms: int = 300):
+    """
+    Retorna uma função que agenda ``callback`` após ``delay_ms`` sem novas chamadas.
+    Útil para busca enquanto digita, evitando consultas a cada tecla.
+    """
+    state = {"job": None}
+
+    def _trigger(*_args):
+        if state["job"] is not None:
+            try:
+                widget.after_cancel(state["job"])
+            except Exception:
+                pass
+        state["job"] = widget.after(delay_ms, _run)
+
+    def _run():
+        state["job"] = None
+        try:
+            if widget.winfo_exists():
+                callback()
+        except Exception:
+            pass
+
+    return _trigger
+
+
+def bind_live_search(entry, callback, delay_ms: int = 300):
+    """Busca enquanto digita (com debounce) + Enter imediato + Esc limpa."""
+    trigger = debounce(entry, callback, delay_ms)
+    _NAV = {"Up", "Down", "Left", "Right", "Home", "End", "Tab", "Shift_L", "Shift_R",
+            "Control_L", "Control_R", "Alt_L", "Alt_R", "Return", "Escape"}
+
+    def on_key(event):
+        if event.keysym in _NAV:
+            return
+        trigger()
+
+    def on_escape(_e):
+        entry.delete(0, "end")
+        callback()
+        return "break"
+
+    entry.bind("<KeyRelease>", on_key, add="+")
+    entry.bind("<Return>", lambda e: callback(), add="+")
+    entry.bind("<Escape>", on_escape, add="+")
+
+
+def ask_save_pdf(parent, default_name: str, title: str):
+    """Diálogo 'Salvar PDF' abrindo na pasta Documentos/RJE Avaliacoes."""
+    from tkinter import filedialog
+    import app_paths
+    from utils.app_support import safe_filename
+
+    base = default_name[:-4] if default_name.lower().endswith(".pdf") else default_name
+    return filedialog.asksaveasfilename(
+        parent=parent.winfo_toplevel(),
+        defaultextension=".pdf",
+        filetypes=[("PDF", "*.pdf")],
+        initialdir=str(app_paths.documents_dir()),
+        initialfile=safe_filename(base, 80) + ".pdf",
+        title=title,
+    )
+
+
+def run_pdf_export(parent, generator, output_path) -> bool:
+    """
+    Executa a geração de PDF com cursor de espera, tratamento de erro e
+    oferta para abrir o arquivo gerado.
+    """
+    from pathlib import Path
+    from tkinter import messagebox
+    from utils.app_support import open_path, log
+
+    top = parent.winfo_toplevel()
+    try:
+        top.configure(cursor="watch")
+        top.update_idletasks()
+        generator()
+    except PermissionError:
+        messagebox.showerror(
+            "PDF",
+            "Não foi possível salvar o arquivo.\n\n"
+            "Verifique se ele não está aberto em outro programa (ex.: leitor de PDF) e tente novamente.",
+            parent=top,
+        )
+        return False
+    except Exception as exc:
+        log.exception("Falha ao gerar PDF")
+        messagebox.showerror("PDF", f"Não foi possível gerar o PDF.\n\nDetalhe: {exc}", parent=top)
+        return False
+    finally:
+        try:
+            top.configure(cursor="")
+        except Exception:
+            pass
+
+    if messagebox.askyesno("PDF gerado", f"PDF salvo em:\n{output_path}\n\nDeseja abrir o arquivo agora?", parent=top):
+        open_path(Path(output_path))
+    return True
+
 
 def setup_enter_navigation(parent):
     """
